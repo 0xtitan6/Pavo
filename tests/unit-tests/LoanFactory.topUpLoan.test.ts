@@ -4,24 +4,20 @@ import { setupLoanParamsAndLog, transferAndApproveToken, createLoanAndGetId, ver
 
 import hre from "hardhat";
 
-// Test suite: LoanFactory topUp tests for VeniceFi
 describe("LoanFactory topUp tests for VeniceFi", function () {
   beforeEach(async function () {
     await deployContracts();
   });
 
-  // Test case: top up collateral successfully
   it("Should top up collateral successfully", async function () {
-    // Create borrow offer parameters
-    const borrowCollateralAmount = hre.ethers.parseUnits("1.102", 8); // 1.102 BTC collateral to meet collateral ratio
-    const borrowRateIndex = 1; // 5% annual interest rate
-    const borrowDurationIndex = 2; // 30 days loan duration
-    const borrowInitialCollateralRatio = 11000; // 110% initial collateral ratio
-    const borrowLiquidationThreshold = 10000; // 100% liquidation threshold
-    const borrowAssetAddress = ethers.ZeroAddress;
-    const borrowCollateralAddress = await btcMock.getAddress(); 
+    const borrowCollateralAmount = hre.ethers.parseUnits("1.102", 8); // 1.102 BTC
+    const borrowRateIndex = 1; // 5% annual rate
+    const borrowDurationIndex = 2; // 30 days
+    const borrowInitialCollateralRatio = 11000; // 110%
+    const borrowLiquidationThreshold = 10000; // 100%
+    const borrowAssetAddress = await usdcMock.getAddress();
+    const borrowCollateralAddress = await btcMock.getAddress();
 
-    // Setup loan parameters and log them
     const loanParams = await createBorrowOfferParams(
       borrowCollateralAmount,
       borrowRateIndex,
@@ -32,24 +28,19 @@ describe("LoanFactory topUp tests for VeniceFi", function () {
       borrowCollateralAddress
     );
 
-    // Setup loan parameters and log them
     await setupLoanParamsAndLog("Top Up Collateral Successfully (Basic)", loanParams, "USDC", "BTC");
 
-    // Transfer and approve BTC
     await transferAndApproveToken(btcMock, borrower, await loanFactory.getAddress(), borrowCollateralAmount, "BTC");
 
-    // Create borrow offer
-    const [borrowOfferId, parsedCreatedEvent] = await createLoanAndGetId(borrower, loanParams);
+    const [borrowOfferId] = await createLoanAndGetId(borrower, loanParams);
 
-    // Create a lend offer
-    const lendOfferAssetAmount = hre.ethers.parseUnits("25000", 6); // 25,000 USDC loan amount
-    const lendOfferCollateralAmount = 0n; // For lend offer, collateral should be 0
+    const lendOfferAssetAmount = hre.ethers.parseUnits("25000", 6); // 25,000 USDC
     const lendOfferRateIndex = 2; // 6% annual rate
-    const lendOfferDurationIndex = 1; // 7 days duration
-    const lendOfferInitialCollateralRatio = 11000; // Use a valid default for lend offer
-    const lendOfferLiquidationThreshold = 10000; // Use a valid default for lend offer
+    const lendOfferDurationIndex = 1; // 7 days
+    const lendOfferInitialCollateralRatio = 11000; // 110%
+    const lendOfferLiquidationThreshold = 10000; // 100%
     const lendOfferAssetAddress = await usdcMock.getAddress();
-    const lendOfferCollateralAddress = ethers.ZeroAddress;
+    const lendOfferCollateralAddress = await btcMock.getAddress();
 
     const lendOfferParams = await createLendOfferParams(
       lendOfferAssetAmount,
@@ -61,45 +52,34 @@ describe("LoanFactory topUp tests for VeniceFi", function () {
       lendOfferLiquidationThreshold
     );
 
-    // Setup loan parameters and log them
     await setupLoanParamsAndLog("Lend Offer for Matching TopUp", lendOfferParams, "USDC");
 
-    // Transfer and approve USDC
     await transferAndApproveToken(usdcMock, lender, await loanFactory.getAddress(), lendOfferAssetAmount, "USDC");
 
-    // Create loan and get ID
-    const [lendOfferId, parsedLendCreatedEvent] = await createLoanAndGetId(lender, lendOfferParams);
+    const [lendOfferId] = await createLoanAndGetId(lender, lendOfferParams);
 
-    // Verify lend offer details
-    await verifyLoanDetails(lendOfferId, lender.address, ethers.ZeroAddress, lendOfferAssetAmount, lendOfferCollateralAmount, LoanStatus.s1);
+    await verifyLoanDetails(lendOfferId, lender.address, ethers.ZeroAddress, lendOfferAssetAmount, 0n, LoanStatus.s1);
 
-    // Take up the loan (borrower takes lend offer)
     await loanFactory.connect(borrower).takeUpLoan(borrowOfferId, lendOfferId);
-    console.log(`Loan ${lendOfferId.toString()} taken up by borrower ${borrower.address} matching borrow offer ${borrowOfferId.toString()}`);
+    console.log(`Loan ${lendOfferId.toString()} taken up by borrower ${borrower.address}`);
 
-    // Verify loan is active before topUp
-    await verifyLoanDetails(lendOfferId, lender.address, borrower.address, lendOfferAssetAmount, borrowCollateralAmount, LoanStatus.s3); // Status.s3 (active)
+    await verifyLoanDetails(lendOfferId, lender.address, borrower.address, lendOfferAssetAmount, borrowCollateralAmount, LoanStatus.s3);
 
-    // Prepare borrower for topUp
     await prepareBorrowerForTopUp(borrower, borrowCollateralAmount);
 
-    // Perform topUp operation
     const topUpReceipt = await topUpAndVerify(borrower, lendOfferId, borrowCollateralAmount);
 
-    // Verify ToppedUp event emission
     await verifyToppedUpEvent(topUpReceipt, borrower.address);
   });
 
-  // Test case: top up collateral multiple times
   it("Should top up collateral multiple times", async function () {
-    // Create borrow offer parameters
-    const borrowCollateralAmount = hre.ethers.parseUnits("1.102", 8); // 1.102 BTC collateral to meet collateral ratio
-    const borrowRateIndex = 1; // 5% annual interest rate
-    const borrowDurationIndex = 2; // 30 days loan duration
-    const borrowInitialCollateralRatio = 11000; // 110% initial collateral ratio
-    const borrowLiquidationThreshold = 10000; // 100% liquidation threshold
-    const borrowAssetAddress = ethers.ZeroAddress;
-    const borrowCollateralAddress = await btcMock.getAddress(); 
+    const borrowCollateralAmount = hre.ethers.parseUnits("1.102", 8); // 1.102 BTC
+    const borrowRateIndex = 1; // 5% annual rate
+    const borrowDurationIndex = 2; // 30 days
+    const borrowInitialCollateralRatio = 11000; // 110%
+    const borrowLiquidationThreshold = 10000; // 100%
+    const borrowAssetAddress = await usdcMock.getAddress();
+    const borrowCollateralAddress = await btcMock.getAddress();
 
     const loanParams = await createBorrowOfferParams(
       borrowCollateralAmount,
@@ -111,24 +91,19 @@ describe("LoanFactory topUp tests for VeniceFi", function () {
       borrowCollateralAddress
     );
 
-    // Setup loan parameters and log them
     await setupLoanParamsAndLog("Top Up Collateral Multiple Times (Basic)", loanParams, "USDC", "BTC");
 
-    // Transfer and approve BTC
     await transferAndApproveToken(btcMock, borrower, await loanFactory.getAddress(), borrowCollateralAmount, "BTC");
 
-    // Create borrow offer
-    const [borrowOfferId, parsedBorrowCreatedEvent] = await createLoanAndGetId(borrower, loanParams);
+    const [borrowOfferId] = await createLoanAndGetId(borrower, loanParams);
 
-    // Create a lend offer
-    const lendOfferAssetAmount = hre.ethers.parseUnits("25000", 6); // 25,000 USDC loan amount
-    const lendOfferCollateralAmount = 0n; // For lend offer, collateral should be 0
+    const lendOfferAssetAmount = hre.ethers.parseUnits("25000", 6); // 25,000 USDC
     const lendOfferRateIndex = 2; // 6% annual rate
-    const lendOfferDurationIndex = 1; // 7 days duration
-    const lendOfferInitialCollateralRatio = 11000; // Use a valid default for lend offer
-    const lendOfferLiquidationThreshold = 10000; // Use a valid default for lend offer
+    const lendOfferDurationIndex = 1; // 7 days
+    const lendOfferInitialCollateralRatio = 11000; // 110%
+    const lendOfferLiquidationThreshold = 10000; // 100%
     const lendOfferAssetAddress = await usdcMock.getAddress();
-    const lendOfferCollateralAddress = ethers.ZeroAddress;
+    const lendOfferCollateralAddress = await btcMock.getAddress();
 
     const lendOfferParams = await createLendOfferParams(
       lendOfferAssetAmount,
@@ -140,76 +115,58 @@ describe("LoanFactory topUp tests for VeniceFi", function () {
       lendOfferLiquidationThreshold
     );
 
-    // Setup loan parameters and log them
     await setupLoanParamsAndLog("Lend Offer for Matching TopUp", lendOfferParams, "USDC");
 
-    // Transfer and approve USDC
     await transferAndApproveToken(usdcMock, lender, await loanFactory.getAddress(), lendOfferAssetAmount, "USDC");
 
-    // Create loan and get ID
-    const [lendOfferId, parsedLendCreatedEvent] = await createLoanAndGetId(lender, lendOfferParams);
-    // Verify lend offer details
-    await verifyLoanDetails(lendOfferId, lender.address, ethers.ZeroAddress, lendOfferAssetAmount, lendOfferCollateralAmount, LoanStatus.s1);   
+    const [lendOfferId] = await createLoanAndGetId(lender, lendOfferParams);
 
-    // Create a lend offer
-    const secondLendOfferAssetAmount = hre.ethers.parseUnits("25000", 6); // 25,000 USDC loan amount
-    const secondLendOfferRateIndex = 2; // 6% annual rate
-    const secondLendOfferDurationIndex = 1; // 7 days duration
-    const secondLendOfferInitialCollateralRatio = 11000; // Use a valid default for lend offer
-    const secondLendOfferLiquidationThreshold = 10000; // Use a valid default for lend offer
-    const secondLendOfferAssetAddress = await usdcMock.getAddress();
-    const secondLendOfferCollateralAddress = ethers.ZeroAddress;
-    const secondLendOfferParams = await createLendOfferParams(    
+    await verifyLoanDetails(lendOfferId, lender.address, ethers.ZeroAddress, lendOfferAssetAmount, 0n, LoanStatus.s1);
+
+    // Create a second lend offer (for second top-up matching context)
+    const secondLendOfferAssetAmount = hre.ethers.parseUnits("25000", 6);
+    const secondLendOfferParams = await createLendOfferParams(
       secondLendOfferAssetAmount,
-      secondLendOfferRateIndex,
-      secondLendOfferDurationIndex,
-      secondLendOfferAssetAddress,
-      secondLendOfferCollateralAddress,
-      secondLendOfferInitialCollateralRatio,
-      secondLendOfferLiquidationThreshold
+      lendOfferRateIndex,
+      lendOfferDurationIndex,
+      lendOfferAssetAddress,
+      lendOfferCollateralAddress,
+      lendOfferInitialCollateralRatio,
+      lendOfferLiquidationThreshold
     );
 
-    // Setup loan parameters and log them
     await setupLoanParamsAndLog("Lend Offer for Matching Second TopUp", secondLendOfferParams, "USDC");
 
-    // Transfer and approve USDC
     await transferAndApproveToken(usdcMock, lender, await loanFactory.getAddress(), secondLendOfferAssetAmount, "USDC");
 
-    // Create second loan and get ID
-    const [secondLendOfferId, parsedSecondLendCreatedEvent] = await createLoanAndGetId(lender, secondLendOfferParams);
-    // Verify lend offer details
+    const [secondLendOfferId] = await createLoanAndGetId(lender, secondLendOfferParams);
+
     await verifyLoanDetails(secondLendOfferId, lender.address, ethers.ZeroAddress, secondLendOfferAssetAmount, 0n, LoanStatus.s1);
 
-    // Take up the loan (borrower takes lend offer)
     await loanFactory.connect(borrower).takeUpLoan(borrowOfferId, lendOfferId);
-    console.log(`Loan ${lendOfferId.toString()} taken up by borrower ${borrower.address} matching borrow offer ${borrowOfferId.toString()}`);
+    console.log(`Loan ${lendOfferId.toString()} taken up by borrower ${borrower.address}`);
 
-    // Perform first topUp    
+    // First topUp
     await prepareBorrowerForTopUp(borrower, borrowCollateralAmount);
     const topUpReceipt1 = await topUpAndVerify(borrower, lendOfferId, borrowCollateralAmount);
-    // Verify loan is active before topUp
-    await verifyLoanDetails(lendOfferId, lender.address, borrower.address, lendOfferAssetAmount, borrowCollateralAmount + borrowCollateralAmount, LoanStatus.s3); // Status.s3 (active)
-    // Verify first topUp results
+    await verifyLoanDetails(lendOfferId, lender.address, borrower.address, lendOfferAssetAmount, borrowCollateralAmount + borrowCollateralAmount, LoanStatus.s3);
     await verifyCollateralIncrease(lendOfferId, borrowCollateralAmount * 2n);
 
-    // Perform second topUp
+    // Second topUp
     await prepareBorrowerForTopUp(borrower, borrowCollateralAmount);
     const topUpReceipt2 = await topUpAndVerify(borrower, lendOfferId, borrowCollateralAmount);
-    // Verify loan is active before topUp
-    await verifyLoanDetails(lendOfferId, lender.address, borrower.address, lendOfferAssetAmount, borrowCollateralAmount * 3n, LoanStatus.s3); // Status.s3 (active)
+    await verifyLoanDetails(lendOfferId, lender.address, borrower.address, lendOfferAssetAmount, borrowCollateralAmount * 3n, LoanStatus.s3);
     await verifyCollateralIncrease(lendOfferId, borrowCollateralAmount * 3n);
   });
 
-  // Test case: top up collateral with large amount
   it("Should top up collateral with large amount", async function () {
-    // Create borrow offer parameters 
-    const borrowCollateralAmount = hre.ethers.parseUnits("1.102", 8); // 1.102 BTC collateral to meet collateral ratio
-    const borrowRateIndex = 1; // 5% annual interest rate
-    const borrowDurationIndex = 2; // 30 days loan duration
-    const borrowInitialCollateralRatio = 11000; // 110% initial collateral ratio
-    const borrowLiquidationThreshold = 10000; // 100% liquidation threshold
-    const borrowAssetAddress = ethers.ZeroAddress;
-    const borrowCollateralAddress = await btcMock.getAddress(); 
+    const borrowCollateralAmount = hre.ethers.parseUnits("1.102", 8); // 1.102 BTC
+    const borrowRateIndex = 1; // 5% annual rate
+    const borrowDurationIndex = 2; // 30 days
+    const borrowInitialCollateralRatio = 11000; // 110%
+    const borrowLiquidationThreshold = 10000; // 100%
+    const borrowAssetAddress = await usdcMock.getAddress();
+    const borrowCollateralAddress = await btcMock.getAddress();
 
     const loanParams = await createBorrowOfferParams(
       borrowCollateralAmount,
@@ -221,25 +178,21 @@ describe("LoanFactory topUp tests for VeniceFi", function () {
       borrowCollateralAddress
     );
 
-    // Setup loan parameters and log them
     await setupLoanParamsAndLog("Top Up Collateral with Large Amount", loanParams, "USDC", "BTC");
 
-    // Transfer and approve BTC
     await transferAndApproveToken(btcMock, borrower, await loanFactory.getAddress(), borrowCollateralAmount, "BTC");
 
-    // Create borrow offer
-    const [borrowOfferId, parsedCreatedEvent] = await createLoanAndGetId(borrower, loanParams);
+    const [borrowOfferId] = await createLoanAndGetId(borrower, loanParams);
 
-    // Create a lend offer
-    const lendOfferAssetAmount = hre.ethers.parseUnits("25000", 6); // 25,000 USDC loan amount
+    const lendOfferAssetAmount = hre.ethers.parseUnits("25000", 6); // 25,000 USDC
     const lendOfferRateIndex = 2; // 6% annual rate
-    const lendOfferDurationIndex = 1; // 7 days duration
-    const lendOfferInitialCollateralRatio = 11000; // Use a valid default for lend offer
-    const lendOfferLiquidationThreshold = 10000; // Use a valid default for lend offer
+    const lendOfferDurationIndex = 1; // 7 days
+    const lendOfferInitialCollateralRatio = 11000; // 110%
+    const lendOfferLiquidationThreshold = 10000; // 100%
     const lendOfferAssetAddress = await usdcMock.getAddress();
-    const lendOfferCollateralAddress = ethers.ZeroAddress;
+    const lendOfferCollateralAddress = await btcMock.getAddress();
 
-    const secondLendOfferParams = await createLendOfferParams(
+    const lendOfferParams = await createLendOfferParams(
       lendOfferAssetAmount,
       lendOfferRateIndex,
       lendOfferDurationIndex,
@@ -249,39 +202,29 @@ describe("LoanFactory topUp tests for VeniceFi", function () {
       lendOfferLiquidationThreshold
     );
 
-    // Setup loan parameters and log them
-    await setupLoanParamsAndLog("Lend Offer for Large TopUp", secondLendOfferParams, "USDC");
+    await setupLoanParamsAndLog("Lend Offer for Large TopUp", lendOfferParams, "USDC");
 
-    // Transfer and approve USDC
     await transferAndApproveToken(usdcMock, lender, await loanFactory.getAddress(), lendOfferAssetAmount, "USDC");
 
-    // Create loan and get ID
-    const [secondLendOfferId, parsedSecondLendCreatedEvent] = await createLoanAndGetId(lender, secondLendOfferParams);
-    // Verify lend offer details
-    await verifyLoanDetails(secondLendOfferId, lender.address, ethers.ZeroAddress, lendOfferAssetAmount, 0n, LoanStatus.s1);
+    const [lendOfferId] = await createLoanAndGetId(lender, lendOfferParams);
 
-    // Take up the loan (borrower takes lend offer)
-    await loanFactory.connect(borrower).takeUpLoan(borrowOfferId, secondLendOfferId);
-    console.log(`Loan ${secondLendOfferId.toString()} taken up by borrower ${borrower.address} matching borrow offer ${borrowOfferId.toString()}`);
+    await verifyLoanDetails(lendOfferId, lender.address, ethers.ZeroAddress, lendOfferAssetAmount, 0n, LoanStatus.s1);
 
-    // Verify the active loan status before topUp
-    await verifyLoanDetails(secondLendOfferId, lender.address, borrower.address, lendOfferAssetAmount, borrowCollateralAmount, LoanStatus.s3); // Status.s3 (active)
+    await loanFactory.connect(borrower).takeUpLoan(borrowOfferId, lendOfferId);
+    console.log(`Loan ${lendOfferId.toString()} taken up by borrower ${borrower.address}`);
 
-    // Prepare borrower for large topUp
+    await verifyLoanDetails(lendOfferId, lender.address, borrower.address, lendOfferAssetAmount, borrowCollateralAmount, LoanStatus.s3);
+
     await prepareBorrowerForTopUp(borrower, borrowCollateralAmount);
 
-    // Perform large amount topUp
-    const topUpReceipt = await topUpAndVerify(borrower, secondLendOfferId, borrowCollateralAmount);
+    const topUpReceipt = await topUpAndVerify(borrower, lendOfferId, borrowCollateralAmount);
 
-    // Verify large collateral increase
     const expectedFinalCollateral = borrowCollateralAmount * 2n;
-    await verifyCollateralIncrease(secondLendOfferId, expectedFinalCollateral);
+    await verifyCollateralIncrease(lendOfferId, expectedFinalCollateral);
 
-    // Verify large BTC transfer to contract
     const contractAddress = await loanFactory.getAddress();
     await verifyTokenBalances(btcMock, contractAddress, borrower.address, expectedFinalCollateral, 0n, "BTC");
 
-    // Verify ToppedUp event emission
     await verifyToppedUpEvent(topUpReceipt, borrower.address);
   });
 });

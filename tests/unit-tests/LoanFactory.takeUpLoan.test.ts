@@ -17,7 +17,7 @@ describe("LoanFactory takeUpLoan tests for VeniceFi", function () {
     const borrowDurationIndex = 2; // 30 days loan duration
     const borrowInitialCollateralRatio = 11000; // 110% initial collateral ratio
     const borrowLiquidationThreshold = 10000; // 100% liquidation threshold
-    const borrowAssetAddress = ethers.ZeroAddress;
+    const borrowAssetAddress = await usdcMock.getAddress();
     const borrowCollateralAddress = await btcMock.getAddress();
 
     // Scenario 2: Borrower takes lend offer
@@ -47,7 +47,7 @@ describe("LoanFactory takeUpLoan tests for VeniceFi", function () {
     const lendOfferInitialCollateralRatio = 11000; // 110% initial collateral ratio
     const lendOfferLiquidationThreshold = 10000; // 100% (must match borrow offer for Scenario 4)
     const lendOfferAssetAddress = await usdcMock.getAddress();
-    const lendOfferCollateralAddress = ethers.ZeroAddress;
+    const lendOfferCollateralAddress = await btcMock.getAddress();
 
     const lendOfferParams = await createLendOfferParams(
       lendOfferAssetAmount,
@@ -92,7 +92,7 @@ describe("LoanFactory takeUpLoan tests for VeniceFi", function () {
     const lendOfferInitialCollateralRatio = 11000; // 110% initial collateral ratio
     const lendOfferLiquidationThreshold = 10000; // 100% (must match borrow offer for Scenario 4)
     const lendOfferAssetAddress = await usdcMock.getAddress();
-    const lendOfferCollateralAddress = ethers.ZeroAddress;
+    const lendOfferCollateralAddress = await btcMock.getAddress();
 
     // Create lend offer parameters
     const lendOfferParams = await createLendOfferParams(
@@ -120,7 +120,7 @@ describe("LoanFactory takeUpLoan tests for VeniceFi", function () {
     const borrowDurationIndex = 2; // 30 days loan duration
     const borrowInitialCollateralRatio = 11000; // 110% initial collateral ratio
     const borrowLiquidationThreshold = 10000; // 100% liquidation threshold
-    const borrowAssetAddress = ethers.ZeroAddress;
+    const borrowAssetAddress = await usdcMock.getAddress();
     const borrowCollateralAddress = await btcMock.getAddress();
 
     // Create borrow offer parameters

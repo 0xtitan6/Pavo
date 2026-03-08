@@ -1,17 +1,24 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
+import "../PriceOracle.sol";
+
 /// @title Loan Calculator Library
-/// @notice Pure functions for calculating loan interest and collateral health score
+/// @notice Pure/view functions for calculating loan interest and collateral health score
 /// @dev Implements formulas from VeniceFi whitepaper
+///      Now uses PriceOracle for live Chainlink prices instead of hardcoded values
 library LoanCalculator {
     
     uint256 constant PRECISION = 1e18;
+
+    // ========================================================================
+    // EXPONENTIATION
+    // ========================================================================
     
-    /// @notice Calculate base^exponent 
-    /// @param base The base number
-    /// @param exponent The exponent 
-    /// @return result base^exponent
+    /// @notice Calculate base^exponent using binary exponentiation with 1e18 precision
+    /// @param base The base number (1e18 scale)
+    /// @param exponent The exponent (integer)
+    /// @return result base^exponent (1e18 scale)
     function pow(uint256 base, uint256 exponent) internal pure returns (uint256) {
         if (exponent == 0) return PRECISION;
         
@@ -28,44 +35,78 @@ library LoanCalculator {
         
         return result;
     }
-    
-    /// @notice Get USDC value of BTC amount (ϕ_t function from whitepaper equation 23)
-    /// @param amount BTC amount (with 8 decimals)
-    /// @param tokenAddress The address of the collateral token
-    /// @return USDC value of BTC amount (with 6 decimals)
-    function getOraclePrice(uint256 amount, address tokenAddress) 
-        internal pure returns (uint256) {
-        // TODO: Integrate actual oracle (e.g., Chainlink)
 
-        // Mock: 1 BTC = 50,000 USDC
-        // Convert BTC (8 decimals) to USDC (6 decimals)
-        return (amount * 50000) / 100;
+    // ========================================================================
+    // ORACLE WRAPPERS — ϕ_t(z) and ϕ_t^(-1)(v)
+    // ========================================================================
+
+    /// @notice Get asset-denominated value of collateral amount: ϕ_t(z)
+    /// @dev Whitepaper equation 23: ϕ_t(H_t, v) valuation process
+    /// @param amount Collateral token amount
+    /// @param tokenAddress The collateral token address
+    /// @param assetDecimals Decimals of the asset (lent) token
+    /// @param oracle The PriceOracle contract instance
+    /// @return Asset-denominated value of the collateral
+    function getOraclePrice(
+        uint256 amount,
+        address tokenAddress,
+        uint8 assetDecimals,
+        PriceOracle oracle
+    ) internal returns (uint256) {
+        return oracle.getOraclePrice(amount, tokenAddress, assetDecimals);
     }
-    
-    /// @notice Get BTC amount for USDC value (ϕ_t^(-1) inverse function)
-    /// @param usdcAmount USDC value
-    /// @param tokenAddress The address of the collateral token
-    /// @return BTC amount equivalent to USDC value
-    function getInverseOraclePrice(uint256 usdcAmount, address tokenAddress)
-        internal pure returns (uint256) {
-        // Price per 1 BTC: 1 BTC = 50,000 USDC
-        // Since getOraclePrice returns (amount * 50000), we need to calculate properly
-        // For 1 BTC (with 8 decimals = 1e8), price is 50,000 USDC (with 6 decimals = 50e9)
-        // To get BTC amount: divide USDC by 50,000
-        // With proper decimal handling: (usdcAmount * 1e8) / (50000 * 1e6)
-        uint256 btcPriceUSDC = 50000 * 1e6; // 50,000 USDC with 6 decimals
-        return (usdcAmount * 1e8) / btcPriceUSDC; // Return BTC with 8 decimals
+
+    /// @notice Get collateral amount for an asset value: ϕ_t^(-1)(v)
+    /// @dev Inverse valuation function
+    /// @param assetAmount Asset (stablecoin) amount in asset decimal units
+    /// @param tokenAddress The collateral token address
+    /// @param assetDecimals Decimals of the asset (lent) token
+    /// @param oracle The PriceOracle contract instance
+    /// @return Collateral token amount
+    function getInverseOraclePrice(
+        uint256 assetAmount,
+        address tokenAddress,
+        uint8 assetDecimals,
+        PriceOracle oracle
+    ) internal returns (uint256) {
+        return oracle.getInverseOraclePrice(assetAmount, tokenAddress, assetDecimals);
     }
+
+    /// @notice Get collateral value in asset units, bypassing the circuit breaker
+    /// @dev Use for liquidations/settlement — circuit breaker must not block these
+    function getOraclePriceUnchecked(
+        uint256 amount,
+        address tokenAddress,
+        uint8 assetDecimals,
+        PriceOracle oracle
+    ) internal returns (uint256) {
+        return oracle.getOraclePriceUnchecked(amount, tokenAddress, assetDecimals);
+    }
+
+    /// @notice Get collateral amount for an asset value, bypassing the circuit breaker
+    /// @dev Use for liquidations/settlement — circuit breaker must not block these
+    function getInverseOraclePriceUnchecked(
+        uint256 assetAmount,
+        address tokenAddress,
+        uint8 assetDecimals,
+        PriceOracle oracle
+    ) internal returns (uint256) {
+        return oracle.getInverseOraclePriceUnchecked(assetAmount, tokenAddress, assetDecimals);
+    }
+
+    // ========================================================================
+    // INTEREST CALCULATIONS — (1 + r)^d * v
+    // ========================================================================
+
 
     /// @notice Calculate total repayment: (1 + r)^d * v
     /// @dev Whitepaper equations 50-51, 54-55, 65
-    /// This function converts to daily rate and applies daily compounding:
-    /// r_daily = r_annual / 365
-    /// Total repayment = (1 + r_daily)^durationDays * principal 
-    ///
-    /// @param principal The principal amount (v)
-    /// @param rateBps Annual interest rate in basis points (converted to per-day rate)
-    /// @param durationDays The loan duration in days (d)
+    ///      Converts annual rate to daily rate and applies daily compounding:
+    ///      r_daily = r_annual / 365
+    ///      Total repayment = (1 + r_daily)^durationDays * principal 
+    /// @param principal The principal amount v (USDC, 6 decimals)
+    /// @param rateBps Annual interest rate in basis points
+    /// @param durationDays The loan duration in days d
     /// @return totalRepayment The total amount to be repaid at maturity
     function calculateTotalRepayment(
         uint256 principal,
@@ -80,104 +121,184 @@ library LoanCalculator {
         // rateBps is in basis points, so divide by 10000 for decimal, then by 365 for daily
         uint256 rDailyScaled = (rateBps * PRECISION) / (10000 * 365);
         
-        // Calculate (1 + r)^d using exponentiation
-        uint256 multiplier = PRECISION + rDailyScaled; // (1 + r_daily)
+        // Calculate (1 + r_daily)^d using binary exponentiation
+        uint256 multiplier = PRECISION + rDailyScaled;
         uint256 compoundFactor = pow(multiplier, durationDays);
         
         // Return (1 + r)^d * v
         return (compoundFactor * principal) / PRECISION;
     }
 
-    /// @notice Calculate current collateral health score
-    /// @dev Whitepaper equation 58 and Remark 3
-    ///      Uses PRORATED loan value: ϕ_t(z) / ((1+r)^t * v)
-    /// @param collateralAmount Original BTC collateral
-    /// @param loanAmount Original loan principal (v)
+    /// @notice Calculate prorated repayment using hourly compounding
+    /// @dev Used by liquidation health checks for finer granularity than daily
+    ///      r_hourly = r_annual / (365 * 24)
+    ///      Prorated value = (1 + r_hourly)^hoursElapsed * principal
+    /// @param principal The principal amount v (USDC, 6 decimals)
+    /// @param rateBps Annual interest rate in basis points
+    /// @param hoursElapsed Hours elapsed since loan start
+    /// @return proratedValue The prorated loan value at the given hour
+    function calculateProratedRepaymentHourly(
+        uint256 principal,
+        uint256 rateBps,
+        uint256 hoursElapsed
+    ) internal pure returns (uint256) {
+        if (hoursElapsed == 0) {
+            return principal;
+        }
+
+        // Convert annual rate to hourly: r_hourly = r_annual / (365 * 24)
+        uint256 rHourlyScaled = (rateBps * PRECISION) / (10000 * 365 * 24);
+
+        // Calculate (1 + r_hourly)^hoursElapsed
+        uint256 multiplier = PRECISION + rHourlyScaled;
+        uint256 compoundFactor = pow(multiplier, hoursElapsed);
+
+        return (compoundFactor * principal) / PRECISION;
+    }
+
+    // ========================================================================
+    // HEALTH SCORE — ϕ_t(z) / ((1+r)^t * v)
+    // ========================================================================
+
+    /// @notice Calculate current collateral health score (hourly precision)
+    /// @dev Whitepaper equation 58 and Remark 3 (prorated health factor)
+    ///      Health = ϕ_t(z) / ((1+r)^t * v) expressed in basis points
+    ///      Uses hourly compounding for smooth health decay instead of daily steps
+    /// @param collateralAmount Collateral token amount z
+    /// @param loanAmount Loan principal v (in asset decimal units)
     /// @param rateBps Interest rate in basis points (annual)
-    /// @param daysElapsed Days elapsed since loan start (t) 
-    /// @param collateralAddress The address of the collateral token
+    /// @param hoursElapsed Hours elapsed since loan start
+    /// @param collateralAddress The collateral token address
+    /// @param assetDecimals Decimals of the asset (lent) token
+    /// @param oracle The PriceOracle contract instance
     /// @return healthScore The collateral health score in basis points (10000 = 100%)
     function calculateHealthScore(
         uint256 collateralAmount,
         uint256 loanAmount,
         uint256 rateBps,
-        uint256 daysElapsed,
-        address collateralAddress
-    ) internal pure returns (uint256) {
+        uint256 hoursElapsed,
+        address collateralAddress,
+        uint8 assetDecimals,
+        PriceOracle oracle
+    ) internal returns (uint256) {
         if (loanAmount == 0) {
-            return 0;
+            return type(uint256).max; // Infinite health if no loan
         }
-        
-        // ϕ_t(z): Convert BTC collateral to USDC value
-        uint256 collateralValue = getOraclePrice(collateralAmount, collateralAddress);
-        
-        // (1 + r)^t * v: Calculate prorated loan value using elapsed time
-        uint256 proratedLoanValue = calculateTotalRepayment(
+
+        // ϕ_t(z): Get asset-denominated value of collateral via Chainlink
+        uint256 collateralValue = getOraclePrice(collateralAmount, collateralAddress, assetDecimals, oracle);
+
+        // (1 + r)^t * v: Calculate prorated loan value using hourly compounding
+        uint256 proratedLoanValue = calculateProratedRepaymentHourly(
             loanAmount,
             rateBps,
-            daysElapsed // Use elapsed time, not duration!
+            hoursElapsed
         );
-        
+
         // [ϕ_t(z) * 10000] / [(1+r)^t * v]: Return ratio in basis points
         return (collateralValue * 10000) / proratedLoanValue;
     }
 
-    /// @notice Calculate BTC payout for lender at loan maturity
-    /// @dev Whitepaper equations 54-55: min{ϕ_d^(-1)((1+r)^d * v), z}
-    /// @param principal Loan principal (v)
+    // ========================================================================
+    // LOAN SETTLEMENT — min/max BTC payouts
+    // ========================================================================
+
+    /// @notice Calculate collateral payout to lender at loan maturity
+    /// @dev Whitepaper equation 54: min{ϕ^(-1)((1+r)^d * v), z}
+    ///      Lender gets the lesser of: collateral equivalent of debt, or all collateral
+    /// @param principal Loan principal v (in asset decimal units)
     /// @param rateBps Interest rate in basis points (annual)
-    /// @param durationDays Full loan duration in days (d)
-    /// @param collateralAmount BTC collateral (z)
-    /// @param collateralAddress The address of the collateral token
-    /// @return BTC amount paid to lender
+    /// @param durationDays Full loan duration d
+    /// @param collateralAmount Collateral token amount z
+    /// @param collateralAddress The collateral token address
+    /// @param assetDecimals Decimals of the asset (lent) token
+    /// @param oracle The PriceOracle contract instance
+    /// @return collateralPayout Collateral token amount paid to lender
     function calculateBTCPayout(
         uint256 principal,
         uint256 rateBps,
         uint256 durationDays,
         uint256 collateralAmount,
-        address collateralAddress
-    ) internal pure returns (uint256) {
-        // Calculate total repayment in USDC: (1 + r)^d * v
-        uint256 usdcAmount = calculateTotalRepayment(
-            principal,
-            rateBps,
-            durationDays
-        );
-        
-        // Convert to BTC equivalent: ϕ^(-1)(totalUSDC)
-        // Use getInverseOraclePrice to convert USDC to BTC
-        uint256 btcEquivalent = getInverseOraclePrice(usdcAmount, collateralAddress);
-        
+        address collateralAddress,
+        uint8 assetDecimals,
+        PriceOracle oracle
+    ) internal returns (uint256 collateralPayout) {
+        // Calculate total repayment in asset units: (1 + r)^d * v
+        uint256 assetAmount = calculateTotalRepayment(principal, rateBps, durationDays);
+
+        // Convert to collateral equivalent: ϕ^(-1)((1+r)^d * v)
+        uint256 collateralEquivalent = getInverseOraclePrice(assetAmount, collateralAddress, assetDecimals, oracle);
+
         // Equation 54: min{ϕ^(-1)((1+r)^d * v), z}
-        return btcEquivalent < collateralAmount ? btcEquivalent : collateralAmount;
+        collateralPayout = collateralEquivalent < collateralAmount ? collateralEquivalent : collateralAmount;
     }
 
-    /// @notice Calculate excess BTC collateral returned to borrower
+    /// @notice Calculate excess collateral returned to borrower
     /// @dev Whitepaper equation 55: max{z - ϕ^(-1)((1+r)^d * v), 0}
-    /// @param principal Loan principal (v)
+    ///      Borrower gets back whatever collateral exceeds the debt
+    /// @param principal Loan principal v (in asset decimal units)
     /// @param rateBps Interest rate in basis points (annual)
-    /// @param durationDays Full loan duration in days (d)
-    /// @param collateralAmount BTC collateral (z)
-    /// @param collateralAddress The address of the collateral token
-    /// @return BTC amount returned to borrower
+    /// @param durationDays Full loan duration d
+    /// @param collateralAmount Collateral token amount z
+    /// @param collateralAddress The collateral token address
+    /// @param assetDecimals Decimals of the asset (lent) token
+    /// @param oracle The PriceOracle contract instance
+    /// @return excessCollateral Collateral token amount returned to borrower
     function calculateExcessCollateral(
         uint256 principal,
         uint256 rateBps,
         uint256 durationDays,
         uint256 collateralAmount,
-        address collateralAddress
-    ) internal pure returns (uint256) {
-        uint256 btcPayout = calculateBTCPayout(
-            principal,
-            rateBps,
-            durationDays,
-            collateralAmount,
-            collateralAddress
+        address collateralAddress,
+        uint8 assetDecimals,
+        PriceOracle oracle
+    ) internal returns (uint256 excessCollateral) {
+        uint256 collateralPayout = calculateBTCPayout(
+            principal, rateBps, durationDays,
+            collateralAmount, collateralAddress, assetDecimals, oracle
         );
-        
-        // Equation 55: max{z - min{ϕ^(-1)((1+r)^d * v), z}, 0}
-        // if collateralAmount greater than btcPayout
-        // return difference, otherwise 0
-        return collateralAmount > btcPayout ? collateralAmount - btcPayout : 0;
+
+        // Equation 55: max{z - collateralPayout, 0}
+        excessCollateral = collateralAmount > collateralPayout ? collateralAmount - collateralPayout : 0;
+    }
+
+    // ========================================================================
+    // UNCHECKED VARIANTS — bypass circuit breaker for liquidation/settlement
+    // ========================================================================
+
+    /// @notice Health score bypassing the circuit breaker
+    /// @dev Use in liquidateLoan — a crash must not block liquidations
+    function calculateHealthScoreUnchecked(
+        uint256 collateralAmount,
+        uint256 loanAmount,
+        uint256 rateBps,
+        uint256 hoursElapsed,
+        address collateralAddress,
+        uint8 assetDecimals,
+        PriceOracle oracle
+    ) internal returns (uint256) {
+        if (loanAmount == 0) return type(uint256).max;
+
+        uint256 collateralValue = getOraclePriceUnchecked(collateralAmount, collateralAddress, assetDecimals, oracle);
+        uint256 proratedLoanValue = calculateProratedRepaymentHourly(loanAmount, rateBps, hoursElapsed);
+
+        return (collateralValue * 10000) / proratedLoanValue;
+    }
+
+    /// @notice Excess collateral bypassing the circuit breaker
+    /// @dev Use in endLoan — matured loans must always be settleable
+    function calculateExcessCollateralUnchecked(
+        uint256 principal,
+        uint256 rateBps,
+        uint256 durationDays,
+        uint256 collateralAmount,
+        address collateralAddress,
+        uint8 assetDecimals,
+        PriceOracle oracle
+    ) internal returns (uint256 excessCollateral) {
+        uint256 assetAmount = calculateTotalRepayment(principal, rateBps, durationDays);
+        uint256 collateralEquivalent = getInverseOraclePriceUnchecked(assetAmount, collateralAddress, assetDecimals, oracle);
+        uint256 collateralPayout = collateralEquivalent < collateralAmount ? collateralEquivalent : collateralAmount;
+        excessCollateral = collateralAmount > collateralPayout ? collateralAmount - collateralPayout : 0;
     }
 }

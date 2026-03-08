@@ -59,6 +59,9 @@ interface ILoanFactory {
     /// @notice Event emitted when collateral is topped up
     event ToppedUp(address indexed borrower);
 
+    /// @notice Event emitted when a protocol fee is collected at loan creation
+    event FeeCollected(address indexed token, address indexed recipient, uint256 amount);
+
     /// @notice Creates a new loan (lend or borrow)
     /// @param _asset The USDC amount of the loan
     /// @param _collateral The BTC amount of collateral

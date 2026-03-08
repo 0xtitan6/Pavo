@@ -1,53 +1,81 @@
 # ParthenonFi Contracts
 
-Smart contracts for ParthenonFi — a peer-to-peer fixed-rate lending protocol where lenders deposit USDC and borrowers post BTC collateral.
+Smart contracts for ParthenonFi — a peer-to-peer fixed-rate lending protocol where lenders deposit USDC and borrowers post BTC (WBTC) collateral.
 
 ## Overview
 
-ParthenonFi is a peer-to-peer marketplace for fixed-rate, fixed-duration loans — like Facebook Marketplace for lending. In contrast to pool-based protocols (Aave, Compound) with variable interest rates subject to manipulation, ParthenonFi offers:
+ParthenonFi is a peer-to-peer marketplace for fixed-rate, fixed-duration loans. In contrast to pool-based protocols (Aave, Compound) with variable interest rates subject to manipulation, ParthenonFi offers:
 
 - **Fixed interest rates** impervious to third-party manipulation
 - **Fixed durations** — from 1 day to 365 days
 - **Peer-to-peer matching** on a first-come-first-served basis
+- **Chainlink price feeds** for live collateral valuation with staleness, zero-price, and sequencer checks
+- **Token whitelisting** via `AssetRegistry` to prevent fake-token attacks
 - **Performance guarantees** — probabilistic bounds on repayment and collateral return derived from a geometric random walk model of BTC/USDC valuation
 
 Lenders and borrowers discover competitive rates through tâtonnement (competitive offer/cancel dynamics), rather than rates set by a central authority or utilization curve.
 
 ## Protocol
 
-Anyone can post an **offer to lend** (deposit USDC) or an **offer to borrow** (deposit BTC collateral). Offers are matched peer-to-peer. Once matched, the loan is live: the borrower receives USDC and the BTC collateral is held in the contract until the loan ends.
+Anyone can post an **offer to lend** (deposit USDC) or an **offer to borrow** (deposit WBTC collateral). Offers are matched peer-to-peer. Once matched, the borrower receives USDC and the WBTC collateral is held in the contract.
 
-At maturity, the lender is repaid in BTC equivalent to `(1 + r)^d * v` (principal + interest), and any excess collateral is returned to the borrower. If the collateral health score drops below the liquidation threshold before maturity, the lender may liquidate and claim the full BTC collateral.
+At maturity, the lender is repaid in BTC equivalent to `(1 + r)^d * v` (principal + interest), and any excess collateral is returned to the borrower. If the collateral health score drops below the liquidation threshold before maturity, the lender may liquidate and claim all WBTC collateral.
 
 ## Contracts
 
 ### [contracts/LoanFactory.sol](contracts/LoanFactory.sol)
-Core contract managing the full loan lifecycle:
+Core contract managing the full loan lifecycle. Takes `PriceOracle` and `AssetRegistry` as constructor arguments.
 
-| Function | Who | Description |
-|---|---|---|
-| `createLoan` | Lender or Borrower | Post a lend offer (deposit USDC) or borrow offer (deposit BTC collateral) |
-| `cancelLoan` | Lender or Borrower | Cancel an unmatched offer and reclaim deposited tokens |
-| `takeUpLoan` | Lender or Borrower | Match two opposing offers into an active loan |
-| `liquidateLoan` | Lender | Liquidate a loan whose health score drops below the liquidation threshold |
-| `endLoan` | Anyone | Settle a matured loan — lender receives BTC (principal + interest), borrower receives excess collateral |
-| `interruptLoan` | Borrower | Repay early with full-term interest in USDC and reclaim BTC collateral |
-| `topUp` | Borrower | Add BTC collateral to improve health score and reduce liquidation risk |
+| Function | Who | Whitepaper | Description |
+|---|---|---|---|
+| `createLoan` | Lender or Borrower | eq. 33–34, 40–41 | Post a lend offer (deposit USDC) or borrow offer (deposit WBTC collateral) |
+| `cancelLoan` | Lender or Borrower | eq. 45–48 | Cancel an unmatched offer and reclaim deposited tokens |
+| `takeUpLoan` | Lender or Borrower | eq. 35–38, 42–44 | Match two opposing offers into an active loan |
+| `liquidateLoan` | Lender | eq. 56–58 | Liquidate when health score drops below threshold; lender claims all WBTC |
+| `endLoan` | Anyone | eq. 53–55 | Settle a matured loan — lender receives BTC payout, borrower receives excess collateral |
+| `interruptLoan` | Borrower | eq. 49–52 | Repay early with full-term interest in USDC and reclaim WBTC collateral |
+| `topUp` | Borrower | eq. 59–60 | Add WBTC collateral to improve health score |
+
+### [contracts/libraries/PriceOracle.sol](contracts/libraries/PriceOracle.sol)
+Wraps Chainlink price feeds with safety checks. Implements `ϕ_t(H_t, v)` from whitepaper equation 23.
+
+| Feature | Description |
+|---|---|
+| Staleness check | Reverts if price is older than `maxStaleness` (e.g., heartbeat + 60s) |
+| Zero/negative price guard | Reverts on invalid feed data |
+| Sequencer uptime check | L2 sequencer check with 1-hour grace period (Arbitrum, Base) |
+| Circuit breaker | Reverts if price moves more than `maxDeviationBps` (default 50%) between reads |
+| View variants | `getOraclePriceView` / `getInverseOraclePriceView` for off-chain reads without state changes |
+| Multi-token | Reads `decimals()` from the ERC20 token dynamically — supports WBTC (8 dec), WETH (18 dec), etc. |
+
+### [contracts/libraries/AssetRegistry.sol](contracts/libraries/AssetRegistry.sol)
+Manages whitelisted tokens and valid collateral/asset pairs.
+
+| Feature | Description |
+|---|---|
+| `registerAsset` | Register a token with symbol, Chainlink feed key, and decimals (validated against ERC20) |
+| `setAssetSupported` | Enable or disable a token for new loans |
+| `setPairSupported` | Whitelist a collateral/asset pair (e.g., WBTC/USDC) |
+| `isValidPair` | Used by `LoanFactory` on every `createLoan` — blocks unlisted tokens |
 
 ### [contracts/libraries/LoanCalculator.sol](contracts/libraries/LoanCalculator.sol)
-Pure math library implementing formulas from the ParthenonFi whitepaper:
+Pure math library implementing formulas from the ParthenonFi whitepaper.
 
 | Function | Formula | Description |
 |---|---|---|
 | `calculateTotalRepayment` | `(1 + r_daily)^d * v` | Total USDC repayment at maturity |
-| `calculateHealthScore` | `φ_t(z) / ((1+r)^t * v)` in bps | Current collateral health score |
-| `calculateBTCPayout` | `min(φ⁻¹((1+r)^d * v), z)` | BTC paid to lender at maturity |
-| `calculateExcessCollateral` | `max(z - φ⁻¹((1+r)^d * v), 0)` | Excess BTC returned to borrower |
-
-> **Note:** Oracle pricing (`φ_t`) is currently mocked at 1 BTC = 50,000 USDC. Chainlink integration is planned.
+| `calculateHealthScore` | `ϕ_t(z) / ((1+r)^t * v)` in bps | Current collateral health (uses hours elapsed, not days) |
+| `calculateBTCPayout` | `min(ϕ⁻¹((1+r)^d * v), z)` | BTC paid to lender at maturity |
+| `calculateBTCPayout` (excess) | `z - btcPayout` | Excess BTC returned to borrower |
 
 ### [contracts/interfaces/ILoanFactory.sol](contracts/interfaces/ILoanFactory.sol)
-Interface defining the `Loan` struct, `Status` enum, events, and function signatures.
+Defines the `Loan` struct, `Status` enum, events, and function signatures.
+
+### [contracts/interfaces/IAssetRegistry.sol](contracts/interfaces/IAssetRegistry.sol)
+Interface for `AssetRegistry`.
+
+### [contracts/deploy/DeployReference.sol](contracts/deploy/DeployReference.sol)
+Reference deployment script with addresses for Ethereum mainnet, Sepolia, Arbitrum, Polygon, and Base. Includes a configuration checklist and an example Foundry deploy script.
 
 ## Loan Parameters
 
@@ -57,29 +85,42 @@ Interface defining the `Loan` struct, `Status` enum, events, and function signat
 
 **Collateral constraints:**
 - Liquidation threshold: 100%–150% (basis points: 10000–15000)
-- Initial collateral ratio: 110%–500% (basis points: 11000–50000)
+- Initial collateral ratio: 110%–500% (basis points: 11000–50000), must exceed liquidation threshold
 - Minimum loan asset: 100 USDC
+- Minimum collateral value: 100 USDC equivalent
 
 ## Loan States
 
 ```
 s1 — offer to lend    (USDC held in contract)
-s2 — offer to borrow  (BTC held in contract)
-s3 — active loan      (BTC held, USDC sent to borrower)
+s2 — offer to borrow  (WBTC held in contract)
+s3 — active loan      (WBTC held, USDC sent to borrower)
 s4 — terminated
 ```
 
 ## Health Score & Liquidation
 
-The health score (from whitepaper equation 58) is:
+The health score (whitepaper eq. 58) is:
 
 ```
-health = φ_t(z) / ((1 + r)^t * v)
+health = ϕ_t(z) / ((1 + r)^t * v)   [in basis points]
 ```
 
-where `φ_t(z)` is the current USDC value of BTC collateral and `(1 + r)^t * v` is the prorated loan value at time `t`. Liquidation is allowed when `health < liquidation_threshold`.
+where `ϕ_t(z)` is the live Chainlink USDC value of WBTC collateral and `(1 + r)^t * v` is the prorated loan value at time `t` (hours elapsed). Liquidation is allowed when `health < liquidationThreshold`, but only before maturity — after maturity, `endLoan` must be used for the fair BTC split.
 
-Note: this differs from Aave-style health factors — the denominator uses prorated (elapsed) loan value, not the final maturity value.
+## Deployment Order
+
+```
+1. Deploy AssetRegistry
+2. registerAsset(WBTC, ...) + registerAsset(USDC, ...)
+3. setAssetSupported(WBTC, true) + setAssetSupported(USDC, true)
+4. setPairSupported(WBTC, USDC, true)
+5. Deploy PriceOracle(owner)
+6. oracle.setFeed(WBTC, CHAINLINK_BTC_USD, 3660)
+7. Deploy LoanFactory(oracle, assetRegistry)
+```
+
+See [contracts/deploy/DeployReference.sol](contracts/deploy/DeployReference.sol) for chain-specific Chainlink addresses and a full Foundry deploy script example.
 
 ## Development
 
@@ -111,6 +152,7 @@ npx hardhat node
 ## Tech Stack
 
 - [Hardhat](https://hardhat.org/) — development framework
-- [OpenZeppelin Contracts v5](https://docs.openzeppelin.com/contracts/5.x/) — `SafeERC20`, `ReentrancyGuard`, `Math`
+- [OpenZeppelin Contracts v5](https://docs.openzeppelin.com/contracts/5.x/) — `SafeERC20`, `ReentrancyGuard`, `Ownable`, `Math`
+- [Chainlink](https://docs.chain.link/) — `AggregatorV3Interface` price feeds
 - Solidity `^0.8.28`
 - TypeScript test suite with Chai
