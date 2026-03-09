@@ -125,9 +125,13 @@ contract PriceOracle {
         emit SequencerFeedUpdated(feed);
     }
 
+    /// @notice Minimum allowed deviation to prevent silently disabling the circuit breaker (M-2 Fix)
+    uint256 public constant MIN_DEVIATION_BPS = 100; // 1%
+
     /// @notice Update the maximum price deviation allowed (circuit breaker threshold)
-    /// @param newMaxDeviationBps New deviation in basis points (e.g., 5000 = 50%)
+    /// @param newMaxDeviationBps New deviation in basis points (e.g., 5000 = 50%); must be >= MIN_DEVIATION_BPS
     function setMaxDeviation(uint256 newMaxDeviationBps) external onlyOwner {
+        require(newMaxDeviationBps >= MIN_DEVIATION_BPS, "Deviation below minimum");
         uint256 old = maxDeviationBps;
         maxDeviationBps = newMaxDeviationBps;
         emit MaxDeviationUpdated(old, newMaxDeviationBps);
@@ -170,14 +174,8 @@ contract PriceOracle {
     ) external returns (uint256 assetValue) {
         uint256 priceUsd = _getValidatedPrice(tokenAddress);
         FeedConfig memory config = feeds[tokenAddress];
-
-        // Formula: (amount * price) / 10^(collateralDecimals + feedDecimals - assetDecimals)
-        // For BTC collateral / USDC asset: (amount_8 * price_8) / 10^(8+8-6) = / 10^10
-        // For BTC collateral / DAI asset:  (amount_8 * price_8) / 10^(8+8-18) = / 10^-2 → * 10^2
         uint256 collateralDecimals = IERC20Metadata(tokenAddress).decimals();
-        uint256 scaleFactor = 10 ** (collateralDecimals + config.feedDecimals - assetDecimals);
-
-        assetValue = (amount * priceUsd) / scaleFactor;
+        assetValue = _scaleToAsset(amount * priceUsd, collateralDecimals + config.feedDecimals, assetDecimals);
     }
 
     /// @notice Get the collateral amount for an asset value: ϕ_t^(-1)(v)
@@ -193,11 +191,8 @@ contract PriceOracle {
     ) external returns (uint256 tokenAmount) {
         uint256 priceUsd = _getValidatedPrice(tokenAddress);
         FeedConfig memory config = feeds[tokenAddress];
-
         uint256 collateralDecimals = IERC20Metadata(tokenAddress).decimals();
-        uint256 scaleFactor = 10 ** (collateralDecimals + config.feedDecimals - assetDecimals);
-
-        tokenAmount = (assetAmount * scaleFactor) / priceUsd;
+        tokenAmount = _scaleToAsset(assetAmount, assetDecimals, collateralDecimals + config.feedDecimals) / priceUsd;
     }
 
     /// @notice Get collateral value in asset units, bypassing the circuit breaker
@@ -215,11 +210,8 @@ contract PriceOracle {
         uint256 priceUsd = _getRawValidatedPrice(tokenAddress);
         lastGoodPrice[tokenAddress] = priceUsd;
         FeedConfig memory config = feeds[tokenAddress];
-
         uint256 collateralDecimals = IERC20Metadata(tokenAddress).decimals();
-        uint256 scaleFactor = 10 ** (collateralDecimals + config.feedDecimals - assetDecimals);
-
-        assetValue = (amount * priceUsd) / scaleFactor;
+        assetValue = _scaleToAsset(amount * priceUsd, collateralDecimals + config.feedDecimals, assetDecimals);
     }
 
     /// @notice Get collateral amount for an asset value, bypassing the circuit breaker
@@ -237,11 +229,8 @@ contract PriceOracle {
         uint256 priceUsd = _getRawValidatedPrice(tokenAddress);
         lastGoodPrice[tokenAddress] = priceUsd;
         FeedConfig memory config = feeds[tokenAddress];
-
         uint256 collateralDecimals = IERC20Metadata(tokenAddress).decimals();
-        uint256 scaleFactor = 10 ** (collateralDecimals + config.feedDecimals - assetDecimals);
-
-        tokenAmount = (assetAmount * scaleFactor) / priceUsd;
+        tokenAmount = _scaleToAsset(assetAmount, assetDecimals, collateralDecimals + config.feedDecimals) / priceUsd;
     }
 
     /// @notice View-only version of getOraclePrice (doesn't update lastGoodPrice)
@@ -256,11 +245,8 @@ contract PriceOracle {
     ) external view returns (uint256 assetValue) {
         uint256 priceUsd = _getRawValidatedPrice(tokenAddress);
         FeedConfig memory config = feeds[tokenAddress];
-
         uint256 collateralDecimals = IERC20Metadata(tokenAddress).decimals();
-        uint256 scaleFactor = 10 ** (collateralDecimals + config.feedDecimals - assetDecimals);
-
-        assetValue = (amount * priceUsd) / scaleFactor;
+        assetValue = _scaleToAsset(amount * priceUsd, collateralDecimals + config.feedDecimals, assetDecimals);
     }
 
     /// @notice View-only version of getInverseOraclePrice
@@ -274,11 +260,23 @@ contract PriceOracle {
     ) external view returns (uint256 tokenAmount) {
         uint256 priceUsd = _getRawValidatedPrice(tokenAddress);
         FeedConfig memory config = feeds[tokenAddress];
-
         uint256 collateralDecimals = IERC20Metadata(tokenAddress).decimals();
-        uint256 scaleFactor = 10 ** (collateralDecimals + config.feedDecimals - assetDecimals);
+        tokenAmount = _scaleToAsset(assetAmount, assetDecimals, collateralDecimals + config.feedDecimals) / priceUsd;
+    }
 
-        tokenAmount = (assetAmount * scaleFactor) / priceUsd;
+    /// @dev Scale a value from `fromDecimals` to `toDecimals` without underflow.
+    ///      If fromDecimals >= toDecimals: divide by 10^(from-to)
+    ///      If fromDecimals <  toDecimals: multiply by 10^(to-from)
+    function _scaleToAsset(
+        uint256 value,
+        uint256 fromDecimals,
+        uint256 toDecimals
+    ) private pure returns (uint256) {
+        if (fromDecimals >= toDecimals) {
+            return value / (10 ** (fromDecimals - toDecimals));
+        } else {
+            return value * (10 ** (toDecimals - fromDecimals));
+        }
     }
 
     // ========================================================================

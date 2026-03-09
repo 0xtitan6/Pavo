@@ -98,7 +98,7 @@ contract LoanFactory is ILoanFactory, ReentrancyGuard, Ownable, Pausable {
     /// @notice Update the fee recipient address
     /// @param _recipient New recipient address
     function setFeeRecipient(address _recipient) external onlyOwner {
-        require(_recipient != address(0), "Recipient cannot be zero address");
+        // address(0) is valid — it disables fee collection (consistent with constructor)
         feeRecipient = _recipient;
     }
 
@@ -352,8 +352,10 @@ contract LoanFactory is ILoanFactory, ReentrancyGuard, Ownable, Pausable {
             lendOffer.collateralAddress = borrowOffer.collateralAddress;
             lendOffer.startTime = block.timestamp;
             lendOffer.s = Status.s3;
-            
+
             emit TakeUp(lendOffer.borrower, lendOffer.lender);
+            // M-3 Fix: Signal to indexers that the taker's offer was consumed (not still open)
+            emit Cancelled(msg.sender, Status.s2);
 
         // ── Lender takes up borrow offer (eq. 42-44) ──
         } else if (loans[takeUpId].lender == msg.sender && loans[takeUpId].lender != loans[offerId].borrower) {
@@ -402,7 +404,9 @@ contract LoanFactory is ILoanFactory, ReentrancyGuard, Ownable, Pausable {
             borrowOffer.s = Status.s3;
 
             emit TakeUp(borrowOffer.borrower, borrowOffer.lender);
-        }      
+            // M-3 Fix: Signal to indexers that the taker's offer was consumed (not still open)
+            emit Cancelled(msg.sender, Status.s1);
+        }
 
         else {
             revert("Unauthorized caller");
@@ -423,8 +427,8 @@ contract LoanFactory is ILoanFactory, ReentrancyGuard, Ownable, Pausable {
         Loan storage loan = loans[id];
         
         require(
-            loan.id == id && id != 0 && loan.s == Status.s3 && loan.lender == msg.sender,
-            "Loan not found, inactive, or unauthorized"
+            loan.id == id && id != 0 && loan.s == Status.s3,
+            "Loan not found or inactive"
         );
 
         // C-2 Fix: Prevent lender from liquidating after maturity (must use endLoan for fair split)
@@ -554,7 +558,8 @@ contract LoanFactory is ILoanFactory, ReentrancyGuard, Ownable, Pausable {
         delete loans[id];
 
         // eq. 50-51: Borrower pays full repayment directly to lender
-        IERC20(assetAddress_).safeTransferFrom(borrower_, lender_, totalRepayment);
+        // M-5 Fix: Pull from msg.sender explicitly (== borrower_, but safer for future delegation/proxy patterns)
+        IERC20(assetAddress_).safeTransferFrom(msg.sender, lender_, totalRepayment);
 
         // eq. 52: Return full BTC collateral to borrower
         IERC20(collateralAddress_).safeTransfer(borrower_, collateral_);
@@ -580,12 +585,12 @@ contract LoanFactory is ILoanFactory, ReentrancyGuard, Ownable, Pausable {
 
         require(additionalCollateral > 0, "Additional collateral must be > 0");
 
-        // eq. 59: z → z + ε
-        loan.collateral += additionalCollateral;
-
-        // eq. 60: w'_{t+1}[0] = w'_t[0] - ε  (borrower commits BTC)
+        // eq. 60: w'_{t+1}[0] = w'_t[0] - ε  (borrower commits BTC) — transfer first (CEI)
         IERC20 collateralToken = IERC20(loan.collateralAddress);
         collateralToken.safeTransferFrom(loan.borrower, address(this), additionalCollateral);
+
+        // eq. 59: z → z + ε — update state after transfer
+        loan.collateral += additionalCollateral;
 
         emit ToppedUp(loan.borrower);
     }
