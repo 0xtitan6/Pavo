@@ -33,7 +33,7 @@ Core contract managing the full loan lifecycle. Takes `PriceOracle` and `AssetRe
 | `createLoan` | Lender or Borrower | eq. 33–34, 40–41 | Post a lend offer (deposit stablecoin) or borrow offer (deposit collateral) |
 | `cancelLoan` | Lender or Borrower | eq. 45–48 | Cancel an unmatched offer and reclaim deposited tokens |
 | `takeUpLoan` | Lender or Borrower | eq. 35–38, 42–44 | Match two opposing offers into an active loan |
-| `liquidateLoan` | Lender | eq. 56–58 | Liquidate when health score drops below threshold; lender claims all collateral |
+| `liquidateLoan` | Anyone | eq. 56–58 | Liquidate when health score drops below threshold; lender claims all collateral |
 | `endLoan` | Anyone | eq. 53–55 | Settle a matured loan — lender receives collateral payout, borrower receives excess |
 | `interruptLoan` | Borrower | eq. 49–52 | Repay early with full-term interest in stablecoin and reclaim collateral |
 | `topUp` | Borrower | eq. 59–60 | Add collateral to improve health score |

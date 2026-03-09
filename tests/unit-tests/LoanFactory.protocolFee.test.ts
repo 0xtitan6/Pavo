@@ -49,9 +49,10 @@ describe("LoanFactory protocol fee tests", function () {
     expect(await loanFactoryWithFee.feeRecipient()).to.equal(lender.address);
   });
 
-  it("Should reject zero address as feeRecipient", async function () {
+  it("Should allow zero address as feeRecipient (disables fee collection)", async function () {
     await expect(loanFactoryWithFee.connect(owner).setFeeRecipient(hre.ethers.ZeroAddress))
-      .to.be.revertedWith("Recipient cannot be zero address");
+      .to.not.be.reverted;
+    expect(await loanFactoryWithFee.feeRecipient()).to.equal(hre.ethers.ZeroAddress);
   });
 
   it("Should reject feeRecipient update from non-owner", async function () {

@@ -37,30 +37,28 @@ describe("LoanFactory liquidateLoan negative tests", function () {
     return { lendOfferId };
   }
 
-  it("Should reject liquidation by non-lender (borrower)", async function () {
+  it("Should allow liquidation by borrower when health is below threshold", async function () {
     const collateral = hre.ethers.parseUnits("0.601", 8);
     const { lendOfferId } = await createActiveLoan(collateral, hre.ethers.parseUnits("25000", 6), 7, 5, 12000, 11000);
 
     // Drop price to make it liquidatable
     await mockAggregator.setAnswer(40_000n * 10n ** 8n);
 
-    await expect(loanFactory.connect(borrower).liquidateLoan(lendOfferId))
-      .to.be.revertedWith("Loan not found, inactive, or unauthorized");
+    await expect(loanFactory.connect(borrower).liquidateLoan(lendOfferId)).to.not.be.reverted;
   });
 
-  it("Should reject liquidation by a third party (owner)", async function () {
+  it("Should allow liquidation by a third party when health is below threshold", async function () {
     const collateral = hre.ethers.parseUnits("0.601", 8);
     const { lendOfferId } = await createActiveLoan(collateral, hre.ethers.parseUnits("25000", 6), 7, 5, 12000, 11000);
 
     await mockAggregator.setAnswer(40_000n * 10n ** 8n);
 
-    await expect(loanFactory.connect(owner).liquidateLoan(lendOfferId))
-      .to.be.revertedWith("Loan not found, inactive, or unauthorized");
+    await expect(loanFactory.connect(owner).liquidateLoan(lendOfferId)).to.not.be.reverted;
   });
 
   it("Should reject liquidation of nonexistent loan", async function () {
     await expect(loanFactory.connect(lender).liquidateLoan(999))
-      .to.be.revertedWith("Loan not found, inactive, or unauthorized");
+      .to.be.revertedWith("Loan not found or inactive");
   });
 
   it("Should reject liquidation of a loan offer (not yet active, s1)", async function () {
@@ -73,7 +71,7 @@ describe("LoanFactory liquidateLoan negative tests", function () {
     const [lendOfferId] = await createLoanAndGetId(lender, lendParams);
 
     await expect(loanFactory.connect(lender).liquidateLoan(lendOfferId))
-      .to.be.revertedWith("Loan not found, inactive, or unauthorized");
+      .to.be.revertedWith("Loan not found or inactive");
   });
 
   it("Should reject liquidation when health is above threshold", async function () {
