@@ -5,6 +5,7 @@ import "./interfaces/ILoanFactory.sol";
 import "./interfaces/IAssetRegistry.sol";
 import "./libraries/LoanCalculator.sol";
 import "./PriceOracle.sol";
+import "./adapters/MorphoAdapter.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
@@ -61,6 +62,10 @@ contract LoanFactory is ILoanFactory, ReentrancyGuard, Ownable, Pausable {
     /// @notice Address that receives protocol fees
     address public feeRecipient;
 
+    /// @notice Optional MorphoAdapter — if set, idle offer funds earn yield while waiting to be matched.
+    ///         address(0) means no adapter (funds stay in LoanFactory as normal).
+    MorphoAdapter public morphoAdapter;
+
     // ========================================================================
     // CONSTRUCTOR
     // ========================================================================
@@ -100,6 +105,12 @@ contract LoanFactory is ILoanFactory, ReentrancyGuard, Ownable, Pausable {
     function setFeeRecipient(address _recipient) external onlyOwner {
         // address(0) is valid — it disables fee collection (consistent with constructor)
         feeRecipient = _recipient;
+    }
+
+    /// @notice Set or unset the MorphoAdapter for idle yield
+    /// @param _adapter MorphoAdapter address, or address(0) to disable
+    function setMorphoAdapter(address _adapter) external onlyOwner {
+        morphoAdapter = MorphoAdapter(_adapter);
     }
 
     // ========================================================================
@@ -198,6 +209,12 @@ contract LoanFactory is ILoanFactory, ReentrancyGuard, Ownable, Pausable {
                 assetToken.safeTransfer(feeRecipient, fee);
                 emit FeeCollected(_assetAddress, feeRecipient, fee);
             }
+
+            // Route net asset to Morpho if adapter is configured for this token
+            if (address(morphoAdapter) != address(0) && morphoAdapter.hasMarket(_assetAddress)) {
+                assetToken.forceApprove(address(morphoAdapter), _asset);
+                morphoAdapter.deposit(_assetAddress, _asset, id);
+            }
         }
 
         // ── Offer to Borrow (eq. 40-41): borrower commits collateral ──
@@ -220,6 +237,12 @@ contract LoanFactory is ILoanFactory, ReentrancyGuard, Ownable, Pausable {
                 _collateral -= fee;
                 collateralToken.safeTransfer(feeRecipient, fee);
                 emit FeeCollected(_collateralAddress, feeRecipient, fee);
+            }
+
+            // Route net collateral to Morpho if adapter is configured for this token
+            if (address(morphoAdapter) != address(0) && morphoAdapter.hasMarket(_collateralAddress)) {
+                collateralToken.forceApprove(address(morphoAdapter), _collateral);
+                morphoAdapter.deposit(_collateralAddress, _collateral, id);
             }
         }
 
@@ -285,13 +308,21 @@ contract LoanFactory is ILoanFactory, ReentrancyGuard, Ownable, Pausable {
         // CEI: delete before external calls
         delete loans[id];
 
-        // eq. 45-46: Cancel lend offer → return USDC to lender
+        // eq. 45-46: Cancel lend offer → return USDC (+ any Morpho yield) to lender
         if (previousStatus == Status.s1) {
-            IERC20(assetAddress).safeTransfer(lender_, asset_);
+            if (address(morphoAdapter) != address(0) && morphoAdapter.sharesOf(id, assetAddress) > 0) {
+                morphoAdapter.withdraw(assetAddress, id, lender_);
+            } else {
+                IERC20(assetAddress).safeTransfer(lender_, asset_);
+            }
 
-        // eq. 47-48: Cancel borrow offer → return BTC to borrower
+        // eq. 47-48: Cancel borrow offer → return BTC (+ any Morpho yield) to borrower
         } else {
-            IERC20(collateralAddress).safeTransfer(borrower_, collateral_);
+            if (address(morphoAdapter) != address(0) && morphoAdapter.sharesOf(id, collateralAddress) > 0) {
+                morphoAdapter.withdraw(collateralAddress, id, borrower_);
+            } else {
+                IERC20(collateralAddress).safeTransfer(borrower_, collateral_);
+            }
         }
 
         emit Cancelled(msg.sender, previousStatus);
@@ -343,13 +374,25 @@ contract LoanFactory is ILoanFactory, ReentrancyGuard, Ownable, Pausable {
             );
 
             // eq. 36: w'_{t+1}[1] = w'_t[1] + v  (borrower receives asset)
-            IERC20 assetToken = IERC20(lendOffer.assetAddress);
-            assetToken.safeTransfer(borrowOffer.borrower, lendOffer.asset);
-            
+            // If lend offer funds are in Morpho, withdraw directly to borrower (principal + yield)
+            address lendAsset = lendOffer.assetAddress;
+            address borrowerAddr = borrowOffer.borrower;
+            if (address(morphoAdapter) != address(0) && morphoAdapter.sharesOf(offerId, lendAsset) > 0) {
+                morphoAdapter.withdraw(lendAsset, offerId, borrowerAddr);
+            } else {
+                IERC20(lendAsset).safeTransfer(borrowerAddr, lendOffer.asset);
+            }
+
+            // If borrow offer collateral is in Morpho, withdraw back into LoanFactory for active loan
+            address collateralAsset = borrowOffer.collateralAddress;
+            if (address(morphoAdapter) != address(0) && morphoAdapter.sharesOf(takeUpId, collateralAsset) > 0) {
+                morphoAdapter.withdraw(collateralAsset, takeUpId, address(this));
+            }
+
             // eq. 38: Transform lend offer → active loan contract
-            lendOffer.borrower = borrowOffer.borrower;
+            lendOffer.borrower = borrowerAddr;
             lendOffer.collateral = borrowOffer.collateral;
-            lendOffer.collateralAddress = borrowOffer.collateralAddress;
+            lendOffer.collateralAddress = collateralAsset;
             lendOffer.startTime = block.timestamp;
             lendOffer.s = Status.s3;
 
@@ -393,8 +436,20 @@ contract LoanFactory is ILoanFactory, ReentrancyGuard, Ownable, Pausable {
             );
 
             // eq. 43-44: lender sends asset, borrower receives asset
-            IERC20 assetToken = IERC20(lendOffer.assetAddress);
-            assetToken.safeTransfer(borrowOffer.borrower, lendOffer.asset);
+            // If lend offer funds are in Morpho, withdraw directly to borrower (principal + yield)
+            address lendAsset2 = lendOffer.assetAddress;
+            address borrowerAddr2 = borrowOffer.borrower;
+            if (address(morphoAdapter) != address(0) && morphoAdapter.sharesOf(takeUpId, lendAsset2) > 0) {
+                morphoAdapter.withdraw(lendAsset2, takeUpId, borrowerAddr2);
+            } else {
+                IERC20(lendAsset2).safeTransfer(borrowerAddr2, lendOffer.asset);
+            }
+
+            // If borrow offer collateral is in Morpho, withdraw back into LoanFactory for active loan
+            address collateralAsset2 = borrowOffer.collateralAddress;
+            if (address(morphoAdapter) != address(0) && morphoAdapter.sharesOf(offerId, collateralAsset2) > 0) {
+                morphoAdapter.withdraw(collateralAsset2, offerId, address(this));
+            }
 
             // Transform borrow offer → active loan contract
             borrowOffer.lender = lendOffer.lender;
