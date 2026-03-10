@@ -318,10 +318,11 @@ contract PriceOracle {
 
         // Step 2: Get latest round data from Chainlink
         (
-            ,
+            uint80 roundId,
             int256 answer,
             ,
             uint256 updatedAt,
+            uint80 answeredInRound
         ) = config.feed.latestRoundData();
 
         // Step 3: Validate price is positive
@@ -331,6 +332,9 @@ contract PriceOracle {
         if (block.timestamp - updatedAt > config.maxStaleness) {
             revert StalePrice(updatedAt, config.maxStaleness);
         }
+
+        // Step 5: Chainlink best-practice — answeredInRound must not lag roundId
+        if (answeredInRound < roundId) revert StalePrice(updatedAt, config.maxStaleness);
 
         return uint256(answer);
     }
