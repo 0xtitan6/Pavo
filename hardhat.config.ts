@@ -8,7 +8,8 @@ const config: HardhatUserConfig = {
       optimizer: {
         enabled: true,
         runs: 200
-      }
+      },
+      viaIR: true
     }
   },
   paths: {
@@ -16,7 +17,8 @@ const config: HardhatUserConfig = {
   },
   networks: {
     hardhat: {
-      chainId: 31337
+      chainId: 31337,
+      allowUnlimitedContractSize: true
     },
     sepolia: {
       url: process.env.SEPOLIA_URL || "https://sepolia.infura.io/v3/YOUR-PROJECT-ID",
