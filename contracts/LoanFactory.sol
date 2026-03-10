@@ -93,10 +93,14 @@ contract LoanFactory is ILoanFactory, ReentrancyGuard, Ownable, Pausable {
     // FEE ADMINISTRATION
     // ========================================================================
 
+    /// @notice Emitted when the protocol fee rate is updated
+    event ProtocolFeeUpdated(uint256 oldFeeBps, uint256 newFeeBps);
+
     /// @notice Update the protocol fee rate
     /// @param _feeBps New fee in basis points (max 500)
     function setProtocolFee(uint256 _feeBps) external onlyOwner {
         require(_feeBps <= MAX_PROTOCOL_FEE_BPS, "Fee exceeds maximum");
+        emit ProtocolFeeUpdated(protocolFeeBps, _feeBps);
         protocolFeeBps = _feeBps;
     }
 
