@@ -175,7 +175,9 @@ contract Test1_RegistryOracle is TestBase {
     function test_PriceOracle_LastGoodPriceUpdated() external {
         Env memory e = _deploy();
         _assertEq(e.oracle.lastGoodPrice(address(e.wbtc)), 0, "lastGoodPrice should start at 0");
-        e.oracle.getOraclePriceUnchecked(1e8, address(e.wbtc), 6);
+        // Use checked variant — unchecked variants no longer update lastGoodPrice
+        // to prevent circuit-breaker poisoning during extreme market events (MEDIUM-C5 fix)
+        e.oracle.getOraclePrice(1e8, address(e.wbtc), 6);
         _assertGt(e.oracle.lastGoodPrice(address(e.wbtc)), 0, "lastGoodPrice should be updated");
     }
 

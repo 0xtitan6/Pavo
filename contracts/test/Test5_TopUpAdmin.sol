@@ -151,7 +151,7 @@ contract Test5_TopUpAdmin is TestBase {
     function test_Admin_SetMorphoAdapterToZero() external {
         Env memory e = _deploy();
         e.factory.setMorphoAdapter(address(0));
-        _assertAddrEq(address(e.factory.morphoAdapter()), address(0), "Morpho adapter should be zero");
+        _assertAddrEq(address(e.factory.yieldAdapter()), address(0), "Morpho adapter should be zero");
     }
 
     // =========================================================================

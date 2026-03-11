@@ -16,6 +16,7 @@ contract PriceOracle {
     error StalePrice(uint256 updatedAt, uint256 maxAge);
     error InvalidPrice(int256 price);
     error SequencerDown();
+    error SequencerFeedStale(uint256 updatedAt, uint256 maxAge);
     error GracePeriodNotOver(uint256 timeSinceUp, uint256 gracePeriod);
     error ZeroAddress();
     error Unauthorized();
@@ -62,6 +63,9 @@ contract PriceOracle {
 
     /// @notice Grace period after sequencer comes back up (default: 1 hour)
     uint256 public constant SEQUENCER_GRACE_PERIOD = 3600;
+
+    /// @notice Maximum staleness for the sequencer uptime feed itself (default: 1 hour)
+    uint256 public constant SEQUENCER_MAX_STALENESS = 3600;
 
     /// @notice Maximum allowed price deviation between consecutive reads (default: 50% = 5000 bps)
     /// @dev Circuit breaker — if price moves more than this in one read, revert
@@ -206,9 +210,10 @@ contract PriceOracle {
         uint256 amount,
         address tokenAddress,
         uint8 assetDecimals
-    ) external returns (uint256 assetValue) {
+    ) external view returns (uint256 assetValue) {
         uint256 priceUsd = _getRawValidatedPrice(tokenAddress);
-        lastGoodPrice[tokenAddress] = priceUsd;
+        // NOTE: Does NOT update lastGoodPrice — prevents unchecked calls (liquidation/settlement)
+        // from poisoning the circuit breaker's baseline during extreme market events.
         FeedConfig memory config = feeds[tokenAddress];
         uint256 collateralDecimals = IERC20Metadata(tokenAddress).decimals();
         assetValue = _scaleToAsset(amount * priceUsd, collateralDecimals + config.feedDecimals, assetDecimals);
@@ -225,9 +230,9 @@ contract PriceOracle {
         uint256 assetAmount,
         address tokenAddress,
         uint8 assetDecimals
-    ) external returns (uint256 tokenAmount) {
+    ) external view returns (uint256 tokenAmount) {
         uint256 priceUsd = _getRawValidatedPrice(tokenAddress);
-        lastGoodPrice[tokenAddress] = priceUsd;
+        // NOTE: Does NOT update lastGoodPrice — same rationale as getOraclePriceUnchecked.
         FeedConfig memory config = feeds[tokenAddress];
         uint256 collateralDecimals = IERC20Metadata(tokenAddress).decimals();
         tokenAmount = _scaleToAsset(assetAmount, assetDecimals, collateralDecimals + config.feedDecimals) / priceUsd;
@@ -347,8 +352,13 @@ contract PriceOracle {
             ,
             int256 answer,
             uint256 startedAt,
-            ,
+            uint256 updatedAt,
         ) = sequencerUptimeFeed.latestRoundData();
+
+        // Check the sequencer feed itself is fresh
+        if (block.timestamp - updatedAt > SEQUENCER_MAX_STALENESS) {
+            revert SequencerFeedStale(updatedAt, SEQUENCER_MAX_STALENESS);
+        }
 
         // answer == 0 means sequencer is up, answer == 1 means it's down
         if (answer != 0) revert SequencerDown();

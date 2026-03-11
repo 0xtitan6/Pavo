@@ -44,4 +44,16 @@ interface IMorpho {
         address onBehalf,
         address receiver
     ) external returns (uint256 assetsWithdrawn, uint256 sharesWithdrawn);
+
+    /// @notice Preview how many assets would be received for redeeming shares
+    /// @dev Read-only equivalent of withdraw-by-shares. Enables frontends to display
+    ///      current position value (principal + accrued yield) without executing a tx.
+    ///      Inspired by ERC-4626 previewRedeem and Morpho optimizer's RatesLens pattern.
+    /// @param marketParams The market to query
+    /// @param shares The number of shares to preview redeeming
+    /// @return assets The estimated assets that would be received
+    function previewRedeem(
+        MarketParams memory marketParams,
+        uint256 shares
+    ) external view returns (uint256 assets);
 }

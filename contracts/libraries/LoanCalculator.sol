@@ -2,37 +2,41 @@
 pragma solidity ^0.8.28;
 
 import "../PriceOracle.sol";
+import "@openzeppelin/contracts/utils/math/Math.sol";
 
 /// @title Loan Calculator Library
 /// @notice Pure/view functions for calculating loan interest and collateral health score
 /// @dev Implements formulas from VeniceFi whitepaper
-///      Now uses PriceOracle for live Chainlink prices instead of hardcoded values
+///      Now uses PriceOracle for live Chainlink prices instead of hardcoded values.
+///      Uses Math.mulDiv for 512-bit intermediate precision in all fixed-point arithmetic.
 library LoanCalculator {
-    
+
     uint256 constant PRECISION = 1e18;
 
     // ========================================================================
     // EXPONENTIATION
     // ========================================================================
-    
+
     /// @notice Calculate base^exponent using binary exponentiation with 1e18 precision
+    /// @dev Uses Math.mulDiv for overflow-safe 512-bit intermediate multiplication,
+    ///      eliminating precision loss from truncated (a*b)/c with 256-bit intermediates.
     /// @param base The base number (1e18 scale)
     /// @param exponent The exponent (integer)
     /// @return result base^exponent (1e18 scale)
     function pow(uint256 base, uint256 exponent) internal pure returns (uint256) {
         if (exponent == 0) return PRECISION;
-        
+
         uint256 result = PRECISION;
         uint256 currentBase = base;
-        
+
         while (exponent > 0) {
             if (exponent % 2 == 1) {
-                result = (result * currentBase) / PRECISION;
+                result = Math.mulDiv(result, currentBase, PRECISION);
             }
-            currentBase = (currentBase * currentBase) / PRECISION;
+            currentBase = Math.mulDiv(currentBase, currentBase, PRECISION);
             exponent /= 2;
         }
-        
+
         return result;
     }
 
@@ -79,7 +83,7 @@ library LoanCalculator {
         address tokenAddress,
         uint8 assetDecimals,
         PriceOracle oracle
-    ) internal returns (uint256) {
+    ) internal view returns (uint256) {
         return oracle.getOraclePriceUnchecked(amount, tokenAddress, assetDecimals);
     }
 
@@ -90,7 +94,7 @@ library LoanCalculator {
         address tokenAddress,
         uint8 assetDecimals,
         PriceOracle oracle
-    ) internal returns (uint256) {
+    ) internal view returns (uint256) {
         return oracle.getInverseOraclePriceUnchecked(assetAmount, tokenAddress, assetDecimals);
     }
 
@@ -116,17 +120,17 @@ library LoanCalculator {
         if (durationDays == 0) {
             return principal;
         }
-        
+
         // Convert annual rate to daily rate: r_daily = r_annual / 365
         // rateBps is in basis points, so divide by 10000 for decimal, then by 365 for daily
         uint256 rDailyScaled = (rateBps * PRECISION) / (10000 * 365);
-        
+
         // Calculate (1 + r_daily)^d using binary exponentiation
         uint256 multiplier = PRECISION + rDailyScaled;
         uint256 compoundFactor = pow(multiplier, durationDays);
-        
-        // Return (1 + r)^d * v
-        return (compoundFactor * principal) / PRECISION;
+
+        // Return (1 + r)^d * v — multiply first, divide last via mulDiv
+        return Math.mulDiv(compoundFactor, principal, PRECISION);
     }
 
     /// @notice Calculate prorated repayment using hourly compounding
@@ -153,7 +157,8 @@ library LoanCalculator {
         uint256 multiplier = PRECISION + rHourlyScaled;
         uint256 compoundFactor = pow(multiplier, hoursElapsed);
 
-        return (compoundFactor * principal) / PRECISION;
+        // Multiply first, divide last via mulDiv for full 512-bit precision
+        return Math.mulDiv(compoundFactor, principal, PRECISION);
     }
 
     // ========================================================================
@@ -196,7 +201,7 @@ library LoanCalculator {
         );
 
         // [ϕ_t(z) * 10000] / [(1+r)^t * v]: Return ratio in basis points
-        return (collateralValue * 10000) / proratedLoanValue;
+        return Math.mulDiv(collateralValue, 10000, proratedLoanValue);
     }
 
     // ========================================================================
@@ -276,13 +281,13 @@ library LoanCalculator {
         address collateralAddress,
         uint8 assetDecimals,
         PriceOracle oracle
-    ) internal returns (uint256) {
+    ) internal view returns (uint256) {
         if (loanAmount == 0) return type(uint256).max;
 
         uint256 collateralValue = getOraclePriceUnchecked(collateralAmount, collateralAddress, assetDecimals, oracle);
         uint256 proratedLoanValue = calculateProratedRepaymentHourly(loanAmount, rateBps, hoursElapsed);
 
-        return (collateralValue * 10000) / proratedLoanValue;
+        return Math.mulDiv(collateralValue, 10000, proratedLoanValue);
     }
 
     /// @notice Excess collateral bypassing the circuit breaker
@@ -295,7 +300,7 @@ library LoanCalculator {
         address collateralAddress,
         uint8 assetDecimals,
         PriceOracle oracle
-    ) internal returns (uint256 excessCollateral) {
+    ) internal view returns (uint256 excessCollateral) {
         uint256 assetAmount = calculateTotalRepayment(principal, rateBps, durationDays);
         uint256 collateralEquivalent = getInverseOraclePriceUnchecked(assetAmount, collateralAddress, assetDecimals, oracle);
         uint256 collateralPayout = collateralEquivalent < collateralAmount ? collateralEquivalent : collateralAmount;

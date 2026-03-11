@@ -133,6 +133,38 @@ const CONTRACTS: ContractGroup[] = [
       { label: "liquidateAnyone",   prefix: "LiquidateLoan"     },
     ],
   },
+  {
+    contractName: "Test7_YieldSurplus",
+    suiteLabel:   "7. MEDIUM-1/MEDIUM-2 yield surplus",
+    groups: [
+      { label: "borrowerTakesLend",  prefix: "BorrowerTakesLend"  },
+      { label: "lenderTakesBorrow",  prefix: "LenderTakesBorrow"  },
+      { label: "negativeYield",      prefix: "NegativeYield"       },
+      { label: "noAdapter",          prefix: "NoAdapter"           },
+    ],
+  },
+  {
+    contractName: "Test8_OracleRegistryCoverage",
+    suiteLabel:   "8. Oracle + Registry coverage gaps",
+    groups: [
+      { label: "PriceOracle",   prefix: "PriceOracle"   },
+      { label: "AssetRegistry", prefix: "AssetRegistry"  },
+    ],
+  },
+  {
+    contractName: "Test9_LoanCalculatorCoverage",
+    suiteLabel:   "9. LoanCalculator branch coverage",
+    groups: [
+      { label: "pow",                    prefix: "Pow"                          },
+      { label: "healthScore",            prefix: "HealthScore"                  },
+      { label: "BTCPayout",              prefix: "BTCPayout"                    },
+      { label: "excessCollateral",       prefix: "ExcessCollateral"             },
+      { label: "oracleWrappers",         prefix: "GetOraclePrice"              },
+      { label: "oracleWrappers",         prefix: "GetInverseOraclePrice"       },
+      { label: "totalRepayment",         prefix: "TotalRepayment"              },
+      { label: "proratedRepayment",      prefix: "ProratedRepayment"           },
+    ],
+  },
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────
