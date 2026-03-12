@@ -765,7 +765,7 @@ contract LoanFactory is ILoanFactory, ReentrancyGuard, Ownable2Step, Pausable {
 
         // eq. 60: w'_{t+1}[0] = w'_t[0] - ε  (borrower commits BTC) — transfer first (CEI)
         IERC20 collateralToken = IERC20(loan.collateralAddress);
-        collateralToken.safeTransferFrom(loan.borrower, address(this), additionalCollateral);
+        collateralToken.safeTransferFrom(msg.sender, address(this), additionalCollateral);
 
         // eq. 59: z → z + ε — update state after transfer
         loan.collateral += additionalCollateral;
