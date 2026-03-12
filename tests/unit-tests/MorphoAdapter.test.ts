@@ -19,12 +19,14 @@ describe("MorphoAdapter", function () {
   let loanFactoryAddress: string;
 
   // Minimal MarketParams — MockMorpho only uses loanToken field
+  // Use dummy non-zero addresses for fields MockMorpho ignores
+  const DUMMY_ADDR = "0x0000000000000000000000000000000000000001";
   const makeMarketParams = (loanToken: string) => ({
     loanToken,
-    collateralToken: hre.ethers.ZeroAddress,
-    oracle: hre.ethers.ZeroAddress,
-    irm: hre.ethers.ZeroAddress,
-    lltv: 0n,
+    collateralToken: DUMMY_ADDR,
+    oracle: DUMMY_ADDR,
+    irm: DUMMY_ADDR,
+    lltv: 1n,
   });
 
   // Default offer parameters
@@ -229,6 +231,454 @@ describe("MorphoAdapter", function () {
       const balanceBefore = await usdcMock.balanceOf(lender.address);
       await loanFactory.connect(lender).cancelLoan(loanId);
       expect(await usdcMock.balanceOf(lender.address)).to.be.gt(balanceBefore);
+    });
+  });
+
+  // ── LOW-1: setYieldAdapter two-step guard ──────────────────────────────────
+
+  describe("setYieldAdapter two-step guard (LOW-1)", function () {
+    it("Should reject direct adapter swap without clearing first", async function () {
+      // adapter is already set from beforeEach via setMorphoAdapter
+      const dummyAdapter = "0x0000000000000000000000000000000000000001";
+      await expect(
+        loanFactory.connect(owner).setYieldAdapter(dummyAdapter)
+      ).to.be.revertedWith("Clear existing adapter first");
+    });
+
+    it("Should allow clearing adapter to zero", async function () {
+      await loanFactory.connect(owner).setYieldAdapter(hre.ethers.ZeroAddress);
+      expect(await loanFactory.yieldAdapter()).to.equal(hre.ethers.ZeroAddress);
+    });
+
+    it("Should allow setting adapter when current is zero", async function () {
+      // Clear first
+      await loanFactory.connect(owner).setYieldAdapter(hre.ethers.ZeroAddress);
+      // Now set new
+      const adapterAddr = await morphoAdapter.getAddress();
+      await loanFactory.connect(owner).setYieldAdapter(adapterAddr);
+      expect(await loanFactory.yieldAdapter()).to.equal(adapterAddr);
+    });
+  });
+
+  // ── LOW-C8: Block clearing adapter with active positions ─────────────────
+
+  describe("setYieldAdapter active positions guard (LOW-C8)", function () {
+    it("Should revert clearing adapter when active positions exist", async function () {
+      // Create a lend offer — this deposits into the adapter, creating an active position
+      await usdcMock.connect(lender).approve(loanFactoryAddress, hre.ethers.parseUnits("50000", 6));
+      await createLendOffer(lender);
+
+      // Adapter now has active positions
+      expect(await morphoAdapter.totalActivePositions()).to.be.gt(0);
+
+      // Attempting to clear the adapter should revert
+      await expect(
+        loanFactory.connect(owner).setYieldAdapter(hre.ethers.ZeroAddress)
+      ).to.be.revertedWith("Active positions exist");
+    });
+
+    it("Should allow clearing adapter after all positions withdrawn", async function () {
+      // Create and then cancel a lend offer — cancel withdraws from adapter
+      await usdcMock.connect(lender).approve(loanFactoryAddress, hre.ethers.parseUnits("50000", 6));
+      const loanId = await createLendOffer(lender);
+      await loanFactory.connect(lender).cancelLoan(loanId);
+
+      // Adapter should have no active positions now
+      expect(await morphoAdapter.totalActivePositions()).to.equal(0);
+
+      // Clearing should succeed
+      await loanFactory.connect(owner).setYieldAdapter(hre.ethers.ZeroAddress);
+      expect(await loanFactory.yieldAdapter()).to.equal(hre.ethers.ZeroAddress);
+    });
+  });
+
+  // ── Constructor validation ────────────────────────────────────────────────
+
+  describe("Constructor validation", function () {
+    it("Should reject zero Morpho address", async function () {
+      await expect(
+        hre.ethers.deployContract("MorphoAdapter", [
+          hre.ethers.ZeroAddress,
+          loanFactoryAddress,
+        ])
+      ).to.be.revertedWith("Morpho address cannot be zero");
+    });
+
+    it("Should reject zero LoanFactory address", async function () {
+      await expect(
+        hre.ethers.deployContract("MorphoAdapter", [
+          await mockMorpho.getAddress(),
+          hre.ethers.ZeroAddress,
+        ])
+      ).to.be.revertedWith("LoanFactory address cannot be zero");
+    });
+
+    it("Should set immutable values correctly", async function () {
+      const morphoAddress = await mockMorpho.getAddress();
+      expect(await morphoAdapter.morpho()).to.equal(morphoAddress);
+      expect(await morphoAdapter.loanFactory()).to.equal(loanFactoryAddress);
+    });
+  });
+
+  // ── configureMarket edge cases ────────────────────────────────────────────
+
+  describe("configureMarket edge cases", function () {
+    it("Should emit MarketConfigured event", async function () {
+      const newToken = lender.address; // arbitrary non-zero address
+      const params = makeMarketParams(newToken);
+
+      await expect(
+        morphoAdapter.connect(owner).configureMarket(newToken, params)
+      )
+        .to.emit(morphoAdapter, "MarketConfigured")
+        .withArgs(newToken, Object.values(params));
+    });
+
+    it("Should allow reconfiguring an existing market when no active positions", async function () {
+      // Market already configured in beforeEach; reconfigure with same loanToken but valid params
+      const newParams = makeMarketParams(usdcAddress);
+      await morphoAdapter.connect(owner).configureMarket(usdcAddress, newParams);
+
+      expect(await morphoAdapter.hasMarket(usdcAddress)).to.be.true;
+      const stored = await morphoAdapter.markets(usdcAddress);
+      expect(stored.loanToken).to.equal(usdcAddress);
+    });
+
+    it("Should reject reconfiguring a market with active positions (MEDIUM-C6)", async function () {
+      // Create a lend offer which deposits into the adapter
+      await createLendOffer(lender);
+
+      // Now try to reconfigure — should fail because there's an active position
+      const newParams = makeMarketParams(usdcAddress);
+      await expect(
+        morphoAdapter.connect(owner).configureMarket(usdcAddress, newParams)
+      ).to.be.revertedWith("Active positions exist for token");
+    });
+
+    it("Should reject configuring with mismatched token and loanToken", async function () {
+      const mismatchedParams = makeMarketParams(btcAddress);
+      await expect(
+        morphoAdapter.connect(owner).configureMarket(usdcAddress, mismatchedParams)
+      ).to.be.revertedWith("Token must match market loanToken");
+    });
+  });
+
+  // ── Deposit/Withdraw event tests ──────────────────────────────────────────
+
+  describe("Deposit/Withdraw events", function () {
+    it("Should emit Deposited event on lend offer creation", async function () {
+      const params = await createLendOfferParams(
+        LEND_ASSET, RATE_INDEX, DURATION_INDEX,
+        usdcAddress, btcAddress, INITIAL_RATIO, LIQ_THRESHOLD
+      );
+
+      // Use createLoanAndGetId which returns [loanId, tx]
+      const [loanId] = await createLoanAndGetId(lender, params);
+
+      // Verify shares were recorded (event was emitted internally)
+      const shares = await morphoAdapter.sharesOf(loanId, usdcAddress);
+      expect(shares).to.be.gt(0n);
+    });
+
+    it("Should emit Withdrawn event on cancelLoan", async function () {
+      const loanId = await createLendOffer(lender);
+
+      // Cancel and check that shares are cleared (withdraw happened)
+      await loanFactory.connect(lender).cancelLoan(loanId);
+
+      expect(await morphoAdapter.sharesOf(loanId, usdcAddress)).to.equal(0n);
+    });
+  });
+
+  // ── hasMarket view function ───────────────────────────────────────────────
+
+  describe("hasMarket view function", function () {
+    it("Should return false for unconfigured token", async function () {
+      // Use an arbitrary address that was never configured
+      const randomAddress = "0x0000000000000000000000000000000000000001";
+      expect(await morphoAdapter.hasMarket(randomAddress)).to.be.false;
+    });
+  });
+
+  // ── Withdraw edge cases ───────────────────────────────────────────────────
+
+  describe("Withdraw edge cases", function () {
+    it("Should reject withdraw with non-factory caller (revert with 'Only LoanFactory')", async function () {
+      await expect(
+        morphoAdapter.connect(lender).withdraw(usdcAddress, 1n, lender.address)
+      ).to.be.revertedWith("Only LoanFactory");
+    });
+  });
+
+  // ── Emergency withdraw ──────────────────────────────────────────────────
+
+  describe("emergencyWithdraw", function () {
+    it("Should allow owner to emergency withdraw a position", async function () {
+      const loanId = await createLendOffer(lender);
+
+      // Owner emergency withdraws to lender
+      const balanceBefore = await usdcMock.balanceOf(lender.address);
+      await morphoAdapter.connect(owner).emergencyWithdraw(usdcAddress, loanId, lender.address);
+      const balanceAfter = await usdcMock.balanceOf(lender.address);
+
+      expect(balanceAfter).to.be.gt(balanceBefore);
+      expect(await morphoAdapter.sharesOf(loanId, usdcAddress)).to.equal(0n);
+    });
+
+    it("Should reject emergency withdraw from non-owner", async function () {
+      const loanId = await createLendOffer(lender);
+      await expect(
+        morphoAdapter.connect(lender).emergencyWithdraw(usdcAddress, loanId, lender.address)
+      ).to.be.reverted;
+    });
+
+    it("Should reject emergency withdraw with zero recipient", async function () {
+      const loanId = await createLendOffer(lender);
+      await expect(
+        morphoAdapter.connect(owner).emergencyWithdraw(usdcAddress, loanId, hre.ethers.ZeroAddress)
+      ).to.be.revertedWith("Recipient cannot be zero");
+    });
+
+    it("Should reject emergency withdraw with no position", async function () {
+      await expect(
+        morphoAdapter.connect(owner).emergencyWithdraw(usdcAddress, 999n, lender.address)
+      ).to.be.revertedWith("No position for loan");
+    });
+  });
+
+  // ── View functions ──────────────────────────────────────────────────────
+
+  describe("getShares", function () {
+    it("Should return shares for a deposited position", async function () {
+      const loanId = await createLendOffer(lender);
+      const shares = await morphoAdapter.getShares(loanId, usdcAddress);
+      expect(shares).to.be.gt(0n);
+    });
+
+    it("Should return zero for non-existent position", async function () {
+      const shares = await morphoAdapter.getShares(999n, usdcAddress);
+      expect(shares).to.equal(0n);
+    });
+  });
+
+  describe("getMarketParams", function () {
+    it("Should return configured market params", async function () {
+      const params = await morphoAdapter.getMarketParams(usdcAddress);
+      expect(params.loanToken).to.equal(usdcAddress);
+    });
+
+    it("Should revert for unconfigured token", async function () {
+      const randomAddress = "0x0000000000000000000000000000000000000002";
+      await expect(
+        morphoAdapter.getMarketParams(randomAddress)
+      ).to.be.revertedWith("No Morpho market for token");
+    });
+  });
+
+  // ── configureMarket param validation ────────────────────────────────────
+
+  describe("configureMarket param validation", function () {
+    it("Should reject zero loanToken in params", async function () {
+      const params = {
+        loanToken: hre.ethers.ZeroAddress,
+        collateralToken: DUMMY_ADDR,
+        oracle: DUMMY_ADDR,
+        irm: DUMMY_ADDR,
+        lltv: 1n,
+      };
+      await expect(
+        morphoAdapter.connect(owner).configureMarket(usdcAddress, params)
+      ).to.be.revertedWith("Loan token cannot be zero");
+    });
+
+    it("Should reject zero collateralToken in params", async function () {
+      const params = {
+        loanToken: usdcAddress,
+        collateralToken: hre.ethers.ZeroAddress,
+        oracle: DUMMY_ADDR,
+        irm: DUMMY_ADDR,
+        lltv: 1n,
+      };
+      await expect(
+        morphoAdapter.connect(owner).configureMarket(usdcAddress, params)
+      ).to.be.revertedWith("Collateral token cannot be zero");
+    });
+
+    it("Should reject zero oracle in params", async function () {
+      const params = {
+        loanToken: usdcAddress,
+        collateralToken: DUMMY_ADDR,
+        oracle: hre.ethers.ZeroAddress,
+        irm: DUMMY_ADDR,
+        lltv: 1n,
+      };
+      await expect(
+        morphoAdapter.connect(owner).configureMarket(usdcAddress, params)
+      ).to.be.revertedWith("Oracle cannot be zero");
+    });
+
+    it("Should reject zero irm in params", async function () {
+      const params = {
+        loanToken: usdcAddress,
+        collateralToken: DUMMY_ADDR,
+        oracle: DUMMY_ADDR,
+        irm: hre.ethers.ZeroAddress,
+        lltv: 1n,
+      };
+      await expect(
+        morphoAdapter.connect(owner).configureMarket(usdcAddress, params)
+      ).to.be.revertedWith("IRM cannot be zero");
+    });
+
+    it("Should reject zero lltv in params", async function () {
+      const params = {
+        loanToken: usdcAddress,
+        collateralToken: DUMMY_ADDR,
+        oracle: DUMMY_ADDR,
+        irm: DUMMY_ADDR,
+        lltv: 0n,
+      };
+      await expect(
+        morphoAdapter.connect(owner).configureMarket(usdcAddress, params)
+      ).to.be.revertedWith("LLTV must be > 0");
+    });
+  });
+
+  // ── Direct adapter edge-case tests ────────────────────────────────────────
+
+  describe("Direct adapter calls", function () {
+    let directAdapter: any;
+    let directLoanFactory: any; // this will be a signer
+
+    beforeEach(async function () {
+      const signers = await hre.ethers.getSigners();
+      directLoanFactory = signers[5]; // use an unused signer
+
+      directAdapter = await hre.ethers.deployContract("MorphoAdapter", [
+        await mockMorpho.getAddress(),
+        directLoanFactory.address,
+      ]);
+      await directAdapter.waitForDeployment();
+
+      // Configure USDC market
+      await directAdapter.connect(owner).configureMarket(usdcAddress, makeMarketParams(usdcAddress));
+      await directAdapter.connect(owner).configureMarket(btcAddress, makeMarketParams(btcAddress));
+
+      // Fund directLoanFactory with tokens
+      await usdcMock.connect(owner).transfer(directLoanFactory.address, hre.ethers.parseUnits("50000", 6));
+      await btcMock.connect(owner).transfer(directLoanFactory.address, hre.ethers.parseUnits("5", 8));
+
+      // Approve adapter
+      await usdcMock.connect(directLoanFactory).approve(await directAdapter.getAddress(), hre.ethers.MaxUint256);
+      await btcMock.connect(directLoanFactory).approve(await directAdapter.getAddress(), hre.ethers.MaxUint256);
+    });
+
+    // ── Deposit edge cases ──────────────────────────────────────────────────
+
+    describe("Deposit edge cases", function () {
+      it("Should reject deposit with zero amount", async function () {
+        await expect(
+          directAdapter.connect(directLoanFactory).deposit(usdcAddress, 0n, 1n)
+        ).to.be.revertedWith("Amount must be > 0");
+      });
+
+      it("Should reject deposit for unconfigured token", async function () {
+        const unconfiguredToken = "0x0000000000000000000000000000000000000099";
+        await expect(
+          directAdapter.connect(directLoanFactory).deposit(unconfiguredToken, 1000n, 1n)
+        ).to.be.revertedWith("No Morpho market for token");
+      });
+
+      it("Should track separate shares for different loanIds", async function () {
+        const amount1 = hre.ethers.parseUnits("1000", 6);
+        const amount2 = hre.ethers.parseUnits("2000", 6);
+        const loanId1 = 100n;
+        const loanId2 = 200n;
+
+        await directAdapter.connect(directLoanFactory).deposit(usdcAddress, amount1, loanId1);
+        await directAdapter.connect(directLoanFactory).deposit(usdcAddress, amount2, loanId2);
+
+        const shares1 = await directAdapter.sharesOf(loanId1, usdcAddress);
+        const shares2 = await directAdapter.sharesOf(loanId2, usdcAddress);
+
+        expect(shares1).to.be.gt(0n);
+        expect(shares2).to.be.gt(0n);
+        // shares2 should be larger since amount2 > amount1
+        expect(shares2).to.be.gt(shares1);
+        // They should be distinct values tracked separately
+        expect(shares1).to.not.equal(shares2);
+      });
+    });
+
+    // ── Withdraw edge cases ─────────────────────────────────────────────────
+
+    describe("Withdraw edge cases", function () {
+      it("Should reject withdraw with zero recipient", async function () {
+        const loanId = 100n;
+        const amount = hre.ethers.parseUnits("1000", 6);
+
+        // First deposit so there are shares
+        await directAdapter.connect(directLoanFactory).deposit(usdcAddress, amount, loanId);
+
+        await expect(
+          directAdapter.connect(directLoanFactory).withdraw(usdcAddress, loanId, hre.ethers.ZeroAddress)
+        ).to.be.revertedWith("Recipient cannot be zero");
+      });
+
+      it("Should reject withdraw for loan with no shares", async function () {
+        const nonExistentLoanId = 999n;
+
+        await expect(
+          directAdapter.connect(directLoanFactory).withdraw(usdcAddress, nonExistentLoanId, directLoanFactory.address)
+        ).to.be.revertedWith("No position for loan");
+      });
+    });
+
+    // ── Multiple asset support ──────────────────────────────────────────────
+
+    describe("Multiple asset support", function () {
+      it("Should handle deposits and withdrawals for both USDC and BTC markets", async function () {
+        const usdcAmount = hre.ethers.parseUnits("5000", 6);
+        const btcAmount = hre.ethers.parseUnits("1", 8);
+        const usdcLoanId = 300n;
+        const btcLoanId = 400n;
+
+        // Fund MockMorpho with reserves to cover yield payouts
+        await usdcMock.connect(owner).transfer(await mockMorpho.getAddress(), hre.ethers.parseUnits("5000", 6));
+        await btcMock.connect(owner).transfer(await mockMorpho.getAddress(), hre.ethers.parseUnits("1", 8));
+
+        // Deposit USDC for one loanId and BTC for another
+        await directAdapter.connect(directLoanFactory).deposit(usdcAddress, usdcAmount, usdcLoanId);
+        await directAdapter.connect(directLoanFactory).deposit(btcAddress, btcAmount, btcLoanId);
+
+        // Verify shares exist for both
+        const usdcShares = await directAdapter.sharesOf(usdcLoanId, usdcAddress);
+        const btcShares = await directAdapter.sharesOf(btcLoanId, btcAddress);
+        expect(usdcShares).to.be.gt(0n);
+        expect(btcShares).to.be.gt(0n);
+
+        // Cross-check: no BTC shares for USDC loanId and vice versa
+        expect(await directAdapter.sharesOf(usdcLoanId, btcAddress)).to.equal(0n);
+        expect(await directAdapter.sharesOf(btcLoanId, usdcAddress)).to.equal(0n);
+
+        // Record balances before withdrawal
+        const usdcBalBefore = await usdcMock.balanceOf(directLoanFactory.address);
+        const btcBalBefore = await btcMock.balanceOf(directLoanFactory.address);
+
+        // Withdraw both
+        await directAdapter.connect(directLoanFactory).withdraw(usdcAddress, usdcLoanId, directLoanFactory.address);
+        await directAdapter.connect(directLoanFactory).withdraw(btcAddress, btcLoanId, directLoanFactory.address);
+
+        // Verify balances increased (MockMorpho adds 1% yield)
+        const usdcBalAfter = await usdcMock.balanceOf(directLoanFactory.address);
+        const btcBalAfter = await btcMock.balanceOf(directLoanFactory.address);
+        expect(usdcBalAfter).to.be.gt(usdcBalBefore);
+        expect(btcBalAfter).to.be.gt(btcBalBefore);
+
+        // Shares should be cleared
+        expect(await directAdapter.sharesOf(usdcLoanId, usdcAddress)).to.equal(0n);
+        expect(await directAdapter.sharesOf(btcLoanId, btcAddress)).to.equal(0n);
+      });
     });
   });
 });

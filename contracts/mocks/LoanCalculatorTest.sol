@@ -113,4 +113,48 @@ contract LoanCalculatorTest {
             oracle
         );
     }
+
+    // ========================================================================
+    // UNCHECKED VARIANTS (view, bypass circuit breaker)
+    // ========================================================================
+
+    function testCalculateHealthScoreUnchecked(
+        uint256 collateralAmount,
+        uint256 loanAmount,
+        uint256 rateBps,
+        uint256 hoursElapsed,
+        address collateralAddress,
+        uint8 assetDecimals,
+        PriceOracle oracle
+    ) external view returns (uint256) {
+        return LoanCalculator.calculateHealthScoreUnchecked(
+            collateralAmount,
+            loanAmount,
+            rateBps,
+            hoursElapsed,
+            collateralAddress,
+            assetDecimals,
+            oracle
+        );
+    }
+
+    function testCalculateExcessCollateralUnchecked(
+        uint256 principal,
+        uint256 rateBps,
+        uint256 durationDays,
+        uint256 collateralAmount,
+        address collateralAddress,
+        uint8 assetDecimals,
+        PriceOracle oracle
+    ) external view returns (uint256) {
+        return LoanCalculator.calculateExcessCollateralUnchecked(
+            principal,
+            rateBps,
+            durationDays,
+            collateralAmount,
+            collateralAddress,
+            assetDecimals,
+            oracle
+        );
+    }
 }

@@ -2,7 +2,7 @@
 pragma solidity ^0.8.28;
 
 import "./interfaces/IAssetRegistry.sol";
-import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/access/Ownable2Step.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 
 /// @title AssetRegistry
@@ -17,7 +17,7 @@ import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 ///      4. setPairSupported(WBTC, USDC, true)
 ///      5. Deploy PriceOracle, setFeed(WBTC, chainlinkBtcUsd, 3660)
 ///      6. Deploy LoanFactory(_oracle, _assetRegistry)
-contract AssetRegistry is IAssetRegistry, Ownable {
+contract AssetRegistry is IAssetRegistry, Ownable2Step {
 
     // ========================================================================
     // STATE

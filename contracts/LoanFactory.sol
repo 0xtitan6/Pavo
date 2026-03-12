@@ -5,19 +5,19 @@ import "./interfaces/ILoanFactory.sol";
 import "./interfaces/IAssetRegistry.sol";
 import "./libraries/LoanCalculator.sol";
 import "./PriceOracle.sol";
-import "./adapters/MorphoAdapter.sol";
+import "./interfaces/IYieldAdapter.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/utils/math/Math.sol";
-import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/access/Ownable2Step.sol";
 import "@openzeppelin/contracts/utils/Pausable.sol";
 
 /// @title Loan Factory Contract
 /// @notice Factory for creating and managing peer-to-peer fixed-rate loans
 /// @dev Implements the VeniceFi whitepaper lending protocol with Chainlink oracle integration
-contract LoanFactory is ILoanFactory, ReentrancyGuard, Ownable, Pausable {
+contract LoanFactory is ILoanFactory, ReentrancyGuard, Ownable2Step, Pausable {
     using SafeERC20 for IERC20;
 
     // ========================================================================
@@ -62,9 +62,9 @@ contract LoanFactory is ILoanFactory, ReentrancyGuard, Ownable, Pausable {
     /// @notice Address that receives protocol fees
     address public feeRecipient;
 
-    /// @notice Optional MorphoAdapter — if set, idle offer funds earn yield while waiting to be matched.
+    /// @notice Optional yield adapter — if set, idle offer funds earn yield while waiting to be matched.
     ///         address(0) means no adapter (funds stay in LoanFactory as normal).
-    MorphoAdapter public morphoAdapter;
+    IYieldAdapter public yieldAdapter;
 
     // ========================================================================
     // CONSTRUCTOR
@@ -96,6 +96,15 @@ contract LoanFactory is ILoanFactory, ReentrancyGuard, Ownable, Pausable {
     /// @notice Emitted when the protocol fee rate is updated
     event ProtocolFeeUpdated(uint256 oldFeeBps, uint256 newFeeBps);
 
+    /// @notice Emitted when the fee recipient is updated
+    event FeeRecipientUpdated(address oldRecipient, address newRecipient);
+
+    /// @notice Emitted when the yield adapter is updated
+    event YieldAdapterUpdated(address oldAdapter, address newAdapter);
+
+    /// @notice Emitted when idle yield surplus is distributed during takeUpLoan
+    event YieldSurplus(uint256 indexed loanId, address indexed recipient, address indexed token, uint256 amount);
+
     /// @notice Update the protocol fee rate
     /// @param _feeBps New fee in basis points (max 500)
     function setProtocolFee(uint256 _feeBps) external onlyOwner {
@@ -108,13 +117,38 @@ contract LoanFactory is ILoanFactory, ReentrancyGuard, Ownable, Pausable {
     /// @param _recipient New recipient address
     function setFeeRecipient(address _recipient) external onlyOwner {
         // address(0) is valid — it disables fee collection (consistent with constructor)
+        emit FeeRecipientUpdated(feeRecipient, _recipient);
         feeRecipient = _recipient;
     }
 
-    /// @notice Set or unset the MorphoAdapter for idle yield
-    /// @param _adapter MorphoAdapter address, or address(0) to disable
+    /// @notice Set or unset the yield adapter for idle yield
+    /// @dev LOW-1 Fix: To change adapters, first clear to address(0) then set the new one.
+    ///      LOW-C8 Fix: Cannot clear adapter while active positions exist — prevents orphaning.
+    /// @param _adapter Yield adapter address (must implement IYieldAdapter), or address(0) to disable
+    function setYieldAdapter(address _adapter) external onlyOwner {
+        _setYieldAdapter(_adapter);
+    }
+
+    /// @dev Internal shared logic for setYieldAdapter and setMorphoAdapter (INFO-8 dedup)
+    function _setYieldAdapter(address _adapter) internal {
+        // LOW-1 Fix: Prevent direct swap — must clear old adapter first to avoid orphaning positions
+        require(
+            address(yieldAdapter) == address(0) || _adapter == address(0),
+            "Clear existing adapter first"
+        );
+        // LOW-C8 Fix: Block clearing if positions are still active in the old adapter
+        if (_adapter == address(0) && address(yieldAdapter) != address(0)) {
+            require(yieldAdapter.totalActivePositions() == 0, "Active positions exist");
+        }
+        emit YieldAdapterUpdated(address(yieldAdapter), _adapter);
+        yieldAdapter = IYieldAdapter(_adapter);
+    }
+
+    /// @notice Backwards-compatible alias for setYieldAdapter
+    /// @dev INFO-8 Fix: Delegates to _setYieldAdapter to eliminate code duplication
+    /// @param _adapter MorphoAdapter or any IYieldAdapter address, or address(0) to disable
     function setMorphoAdapter(address _adapter) external onlyOwner {
-        morphoAdapter = MorphoAdapter(_adapter);
+        _setYieldAdapter(_adapter);
     }
 
     // ========================================================================
@@ -214,10 +248,12 @@ contract LoanFactory is ILoanFactory, ReentrancyGuard, Ownable, Pausable {
                 emit FeeCollected(_assetAddress, feeRecipient, fee);
             }
 
-            // Route net asset to Morpho if adapter is configured for this token
-            if (address(morphoAdapter) != address(0) && morphoAdapter.hasMarket(_assetAddress)) {
-                assetToken.forceApprove(address(morphoAdapter), _asset);
-                morphoAdapter.deposit(_assetAddress, _asset, id);
+            // Route net asset to yield adapter if configured for this token
+            if (address(yieldAdapter) != address(0) && yieldAdapter.hasMarket(_assetAddress)) {
+                assetToken.forceApprove(address(yieldAdapter), _asset);
+                yieldAdapter.deposit(_assetAddress, _asset, id);
+                // LOW-9 Fix: Clear residual approval (defense-in-depth, mirrors LOW-2/LOW-8)
+                assetToken.forceApprove(address(yieldAdapter), 0);
             }
         }
 
@@ -243,10 +279,12 @@ contract LoanFactory is ILoanFactory, ReentrancyGuard, Ownable, Pausable {
                 emit FeeCollected(_collateralAddress, feeRecipient, fee);
             }
 
-            // Route net collateral to Morpho if adapter is configured for this token
-            if (address(morphoAdapter) != address(0) && morphoAdapter.hasMarket(_collateralAddress)) {
-                collateralToken.forceApprove(address(morphoAdapter), _collateral);
-                morphoAdapter.deposit(_collateralAddress, _collateral, id);
+            // Route net collateral to yield adapter if configured for this token
+            if (address(yieldAdapter) != address(0) && yieldAdapter.hasMarket(_collateralAddress)) {
+                collateralToken.forceApprove(address(yieldAdapter), _collateral);
+                yieldAdapter.deposit(_collateralAddress, _collateral, id);
+                // LOW-9 Fix: Clear residual approval (defense-in-depth, mirrors LOW-2/LOW-8)
+                collateralToken.forceApprove(address(yieldAdapter), 0);
             }
         }
 
@@ -314,16 +352,16 @@ contract LoanFactory is ILoanFactory, ReentrancyGuard, Ownable, Pausable {
 
         // eq. 45-46: Cancel lend offer → return USDC (+ any Morpho yield) to lender
         if (previousStatus == Status.s1) {
-            if (address(morphoAdapter) != address(0) && morphoAdapter.sharesOf(id, assetAddress) > 0) {
-                morphoAdapter.withdraw(assetAddress, id, lender_);
+            if (address(yieldAdapter) != address(0) && yieldAdapter.sharesOf(id, assetAddress) > 0) {
+                yieldAdapter.withdraw(assetAddress, id, lender_);
             } else {
                 IERC20(assetAddress).safeTransfer(lender_, asset_);
             }
 
         // eq. 47-48: Cancel borrow offer → return BTC (+ any Morpho yield) to borrower
         } else {
-            if (address(morphoAdapter) != address(0) && morphoAdapter.sharesOf(id, collateralAddress) > 0) {
-                morphoAdapter.withdraw(collateralAddress, id, borrower_);
+            if (address(yieldAdapter) != address(0) && yieldAdapter.sharesOf(id, collateralAddress) > 0) {
+                yieldAdapter.withdraw(collateralAddress, id, borrower_);
             } else {
                 IERC20(collateralAddress).safeTransfer(borrower_, collateral_);
             }
@@ -342,6 +380,9 @@ contract LoanFactory is ILoanFactory, ReentrancyGuard, Ownable, Pausable {
     function takeUpLoan(uint256 takeUpId, uint256 offerId) external nonReentrant whenNotPaused override {
 
         require(takeUpId != offerId, "IDs must differ");
+        // C2 Fix: Explicit existence checks prevent phantom matching against deleted/uninitialized offers
+        require(loans[takeUpId].id == takeUpId && takeUpId != 0, "TakeUp does not exist");
+        require(loans[offerId].id == offerId && offerId != 0, "Offer does not exist");
 
         // ── Borrower takes up lend offer (eq. 35-38) ──
         if (loans[takeUpId].borrower == msg.sender && loans[takeUpId].borrower != loans[offerId].lender) {
@@ -357,6 +398,12 @@ contract LoanFactory is ILoanFactory, ReentrancyGuard, Ownable, Pausable {
             require(
                 borrowOffer.assetAddress == lendOffer.assetAddress,
                 "Offers must use the same asset token"
+            );
+
+            // H-6 Fix: Ensure both offers use the same collateral token
+            require(
+                borrowOffer.collateralAddress == lendOffer.collateralAddress,
+                "Offers must use the same collateral token"
             );
 
             // eq. 39: ϕ_{t0}(z) > max(ρv, cv) — validate collateral via Chainlink
@@ -378,24 +425,57 @@ contract LoanFactory is ILoanFactory, ReentrancyGuard, Ownable, Pausable {
             );
 
             // eq. 36: w'_{t+1}[1] = w'_t[1] + v  (borrower receives asset)
-            // If lend offer funds are in Morpho, withdraw directly to borrower (principal + yield)
+            // MEDIUM-1 Fix: Withdraw to LoanFactory first, send only principal to borrower,
+            // yield surplus goes to lender (who earned it while the offer was idle)
             address lendAsset = lendOffer.assetAddress;
             address borrowerAddr = borrowOffer.borrower;
-            if (address(morphoAdapter) != address(0) && morphoAdapter.sharesOf(offerId, lendAsset) > 0) {
-                morphoAdapter.withdraw(lendAsset, offerId, borrowerAddr);
+            if (address(yieldAdapter) != address(0) && yieldAdapter.sharesOf(offerId, lendAsset) > 0) {
+                uint256 withdrawn = yieldAdapter.withdraw(lendAsset, offerId, address(this));
+                // Send borrower the lesser of withdrawn and principal (handles negative yield)
+                uint256 borrowerAmount = withdrawn < lendOffer.asset ? withdrawn : lendOffer.asset;
+                IERC20(lendAsset).safeTransfer(borrowerAddr, borrowerAmount);
+                if (withdrawn > lendOffer.asset) {
+                    uint256 yieldSurplus = withdrawn - lendOffer.asset;
+                    IERC20(lendAsset).safeTransfer(lendOffer.lender, yieldSurplus);
+                    emit YieldSurplus(offerId, lendOffer.lender, lendAsset, yieldSurplus);
+                }
             } else {
                 IERC20(lendAsset).safeTransfer(borrowerAddr, lendOffer.asset);
             }
 
-            // If borrow offer collateral is in Morpho, withdraw back into LoanFactory for active loan
+            // MEDIUM-2 Fix: Capture collateral withdrawal amount, send surplus to borrower
+            // MEDIUM-5 Fix: If negative yield, update collateral to actual withdrawn amount
             address collateralAsset = borrowOffer.collateralAddress;
-            if (address(morphoAdapter) != address(0) && morphoAdapter.sharesOf(takeUpId, collateralAsset) > 0) {
-                morphoAdapter.withdraw(collateralAsset, takeUpId, address(this));
+            uint256 effectiveCollateral = borrowOffer.collateral;
+            if (address(yieldAdapter) != address(0) && yieldAdapter.sharesOf(takeUpId, collateralAsset) > 0) {
+                uint256 collateralWithdrawn = yieldAdapter.withdraw(collateralAsset, takeUpId, address(this));
+                if (collateralWithdrawn > borrowOffer.collateral) {
+                    uint256 collateralSurplus = collateralWithdrawn - borrowOffer.collateral;
+                    IERC20(collateralAsset).safeTransfer(borrowerAddr, collateralSurplus);
+                    emit YieldSurplus(takeUpId, borrowerAddr, collateralAsset, collateralSurplus);
+                } else if (collateralWithdrawn < borrowOffer.collateral) {
+                    effectiveCollateral = collateralWithdrawn;
+                }
+            }
+
+            // MEDIUM-7 Fix: Re-validate collateral sufficiency after adapter withdrawal
+            // (negative yield may have reduced effectiveCollateral below the required threshold)
+            if (effectiveCollateral < borrowOffer.collateral) {
+                uint256 effectiveCollateralValue = LoanCalculator.getOraclePriceUnchecked(
+                    effectiveCollateral,
+                    collateralAsset,
+                    assetDec,
+                    oracle
+                );
+                require(
+                    effectiveCollateralValue > Math.max(requiredForInitialRatio, requiredForLiquidation),
+                    "Post-withdrawal collateral insufficient"
+                );
             }
 
             // eq. 38: Transform lend offer → active loan contract
             lendOffer.borrower = borrowerAddr;
-            lendOffer.collateral = borrowOffer.collateral;
+            lendOffer.collateral = effectiveCollateral;
             lendOffer.collateralAddress = collateralAsset;
             lendOffer.startTime = block.timestamp;
             lendOffer.s = Status.s3;
@@ -421,6 +501,12 @@ contract LoanFactory is ILoanFactory, ReentrancyGuard, Ownable, Pausable {
                 "Offers must use the same asset token"
             );
 
+            // H-6 Fix: Ensure both offers use the same collateral token
+            require(
+                lendOffer.collateralAddress == borrowOffer.collateralAddress,
+                "Offers must use the same collateral token"
+            );
+
             // eq. 39: ϕ_{t0}(z) > max(ρv, cv) — validate collateral via Chainlink
             // H-2 Fix: Use unchecked oracle so a market crash doesn't block takeUpLoan
             uint8 assetDec2 = IERC20Metadata(lendOffer.assetAddress).decimals();
@@ -440,19 +526,52 @@ contract LoanFactory is ILoanFactory, ReentrancyGuard, Ownable, Pausable {
             );
 
             // eq. 43-44: lender sends asset, borrower receives asset
-            // If lend offer funds are in Morpho, withdraw directly to borrower (principal + yield)
+            // MEDIUM-1 Fix: Withdraw to LoanFactory first, send only principal to borrower,
+            // yield surplus goes to lender (who earned it while the offer was idle)
             address lendAsset2 = lendOffer.assetAddress;
             address borrowerAddr2 = borrowOffer.borrower;
-            if (address(morphoAdapter) != address(0) && morphoAdapter.sharesOf(takeUpId, lendAsset2) > 0) {
-                morphoAdapter.withdraw(lendAsset2, takeUpId, borrowerAddr2);
+            if (address(yieldAdapter) != address(0) && yieldAdapter.sharesOf(takeUpId, lendAsset2) > 0) {
+                uint256 withdrawn2 = yieldAdapter.withdraw(lendAsset2, takeUpId, address(this));
+                // Send borrower the lesser of withdrawn and principal (handles negative yield)
+                uint256 borrowerAmount2 = withdrawn2 < lendOffer.asset ? withdrawn2 : lendOffer.asset;
+                IERC20(lendAsset2).safeTransfer(borrowerAddr2, borrowerAmount2);
+                if (withdrawn2 > lendOffer.asset) {
+                    uint256 yieldSurplus2 = withdrawn2 - lendOffer.asset;
+                    IERC20(lendAsset2).safeTransfer(lendOffer.lender, yieldSurplus2);
+                    emit YieldSurplus(takeUpId, lendOffer.lender, lendAsset2, yieldSurplus2);
+                }
             } else {
                 IERC20(lendAsset2).safeTransfer(borrowerAddr2, lendOffer.asset);
             }
 
-            // If borrow offer collateral is in Morpho, withdraw back into LoanFactory for active loan
+            // MEDIUM-2 Fix: Capture collateral withdrawal amount, send surplus to borrower
+            // MEDIUM-5 Fix: If negative yield, update collateral to actual withdrawn amount
             address collateralAsset2 = borrowOffer.collateralAddress;
-            if (address(morphoAdapter) != address(0) && morphoAdapter.sharesOf(offerId, collateralAsset2) > 0) {
-                morphoAdapter.withdraw(collateralAsset2, offerId, address(this));
+            uint256 originalCollateral2 = borrowOffer.collateral;
+            if (address(yieldAdapter) != address(0) && yieldAdapter.sharesOf(offerId, collateralAsset2) > 0) {
+                uint256 collateralWithdrawn2 = yieldAdapter.withdraw(collateralAsset2, offerId, address(this));
+                if (collateralWithdrawn2 > borrowOffer.collateral) {
+                    uint256 collateralSurplus2 = collateralWithdrawn2 - borrowOffer.collateral;
+                    IERC20(collateralAsset2).safeTransfer(borrowerAddr2, collateralSurplus2);
+                    emit YieldSurplus(offerId, borrowerAddr2, collateralAsset2, collateralSurplus2);
+                } else if (collateralWithdrawn2 < borrowOffer.collateral) {
+                    borrowOffer.collateral = collateralWithdrawn2;
+                }
+            }
+
+            // MEDIUM-7 Fix: Re-validate collateral sufficiency after adapter withdrawal
+            // (negative yield may have reduced effective collateral below the required threshold)
+            if (borrowOffer.collateral < originalCollateral2) {
+                uint256 effectiveCollateralValue2 = LoanCalculator.getOraclePriceUnchecked(
+                    borrowOffer.collateral,
+                    collateralAsset2,
+                    assetDec2,
+                    oracle
+                );
+                require(
+                    effectiveCollateralValue2 > Math.max(requiredForInitialRatio, requiredForLiquidation),
+                    "Post-withdrawal collateral insufficient"
+                );
             }
 
             // Transform borrow offer → active loan contract
