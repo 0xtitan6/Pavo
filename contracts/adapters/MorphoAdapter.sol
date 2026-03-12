@@ -11,6 +11,8 @@ import "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
 /// @title MorphoAdapter
 /// @notice Earns yield on idle lend/borrow offer funds via Morpho Blue while offers await matching.
+/// @custom:deprecated Use OptimizerAdapter instead — routes through ParthenonOptimizer (self-managed pool markets)
+///                    rather than external Morpho Blue. Kept for backwards compatibility with existing tests.
 /// @dev Two access tiers:
 ///      - owner (admin EOA): configures markets, pauses markets, sets deposit caps
 ///      - loanFactory: calls deposit/withdraw to move funds in/out of Morpho
