@@ -6,7 +6,12 @@
   "scripts": {
     "test": "hardhat test",
     "compile": "hardhat compile",
-    "explore-oz": "node scripts/explore-oz.js"
+    "explore-oz": "node scripts/explore-oz.js",
+    "deploy:pool": "npx hardhat run scripts/deploy-pool.ts --network sepolia",
+    "deploy:optimizer": "npx hardhat run scripts/deploy-optimizer.ts --network sepolia",
+    "deploy:adapter": "npx hardhat run scripts/deploy-adapter.ts --network sepolia",
+    "deploy:all": "npx hardhat run scripts/deploy-all.ts --network sepolia",
+    "deploy:all:local": "npx hardhat run scripts/deploy-all.ts --network hardhat"
   },
   "keywords": [],
   "author": "",
