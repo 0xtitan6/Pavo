@@ -1,0 +1,252 @@
+{
+  "description": "Shared test vectors for cross-platform parity between EVM (RAY=1e27) and DAML (RAY=1e9)",
+  "version": "1.0.0",
+
+  "interest_accrual": [
+    {
+      "testId": "basic_interest_5pct_6months",
+      "description": "5% APR over 6 months (half year = 15768000 seconds)",
+      "annualInterestBips": 500,
+      "timeDeltaSeconds": 15768000,
+      "expectedInterestRay27": "25000000000000000000000000",
+      "expectedInterestRay9": "25000000",
+      "expectedNewScaleFactorRay27": "1025000000000000000000000000",
+      "expectedNewScaleFactorRay9": "1025000000",
+      "notes": "initialScaleFactor = RAY (1.0). Interest = 500/10000 * 15768000/31536000 * RAY = 0.025 * RAY"
+    },
+    {
+      "testId": "basic_interest_10pct_1year",
+      "description": "10% APR over 1 year (31536000 seconds)",
+      "annualInterestBips": 1000,
+      "timeDeltaSeconds": 31536000,
+      "expectedInterestRay27": "100000000000000000000000000",
+      "expectedInterestRay9": "100000000",
+      "expectedNewScaleFactorRay27": "1100000000000000000000000000",
+      "expectedNewScaleFactorRay9": "1100000000",
+      "notes": "10% * 1 year = 0.1 * RAY"
+    },
+    {
+      "testId": "basic_interest_1pct_30days",
+      "description": "1% APR over 30 days (2592000 seconds)",
+      "annualInterestBips": 100,
+      "timeDeltaSeconds": 2592000,
+      "expectedInterestRay27": "821917808219178082191780",
+      "expectedInterestRay9": "821917",
+      "notes": "1% * 30/365 = ~0.000821917808... * RAY. DAML rounds to 6 digits at 1e9 precision."
+    },
+    {
+      "testId": "zero_interest",
+      "description": "0% APR over 1 year",
+      "annualInterestBips": 0,
+      "timeDeltaSeconds": 31536000,
+      "expectedInterestRay27": "0",
+      "expectedInterestRay9": "0",
+      "expectedNewScaleFactorRay27": "1000000000000000000000000000",
+      "expectedNewScaleFactorRay9": "1000000000"
+    },
+    {
+      "testId": "zero_time",
+      "description": "5% APR over 0 seconds",
+      "annualInterestBips": 500,
+      "timeDeltaSeconds": 0,
+      "expectedInterestRay27": "0",
+      "expectedInterestRay9": "0",
+      "expectedNewScaleFactorRay27": "1000000000000000000000000000",
+      "expectedNewScaleFactorRay9": "1000000000"
+    }
+  ],
+
+  "scale_conversions": [
+    {
+      "testId": "scale_at_1x",
+      "description": "1000 USD at scale factor 1.0",
+      "normalizedAmount": "1000000000000000000000",
+      "scaleFactor27": "1000000000000000000000000000",
+      "scaleFactor9": "1000000000",
+      "expectedScaledAmount": "1000000000000000000000",
+      "notes": "At initial scale factor, normalized == scaled"
+    },
+    {
+      "testId": "scale_at_1.025x",
+      "description": "1000 USD at scale factor 1.025 (after 5% APR / 6 months)",
+      "normalizedAmount": "1000000000000000000000",
+      "scaleFactor27": "1025000000000000000000000000",
+      "scaleFactor9": "1025000000",
+      "expectedScaledAmount": "975609756097560975610",
+      "notes": "1000 * RAY / 1.025RAY = ~975.609756..."
+    },
+    {
+      "testId": "normalize_at_1.1x",
+      "description": "1000 scaled tokens at scale factor 1.1",
+      "scaledAmount": "1000000000000000000000",
+      "scaleFactor27": "1100000000000000000000000000",
+      "scaleFactor9": "1100000000",
+      "expectedNormalizedAmount": "1100000000000000000000",
+      "notes": "1000 * 1.1RAY / RAY = 1100"
+    }
+  ],
+
+  "delinquency_fee": [
+    {
+      "testId": "delinquency_after_grace",
+      "description": "10% penalty, 14 days delinquent, 7 day grace period",
+      "penaltyFeeBips": 1000,
+      "previousTimeDelinquent": 0,
+      "gracePeriodSeconds": 604800,
+      "timeDeltaSeconds": 1209600,
+      "isDelinquent": true,
+      "expectedTimeWithPenalty": 604800,
+      "expectedFeeRay27": "1917808219178082191780821",
+      "notes": "14 days delinquent, 7 day grace -> 7 days of penalty. 1000bips/10000 * 604800/31536000 * RAY"
+    },
+    {
+      "testId": "delinquency_within_grace",
+      "description": "10% penalty, 3 days delinquent, 7 day grace period",
+      "penaltyFeeBips": 1000,
+      "previousTimeDelinquent": 0,
+      "gracePeriodSeconds": 604800,
+      "timeDeltaSeconds": 259200,
+      "isDelinquent": true,
+      "expectedTimeWithPenalty": 0,
+      "expectedFeeRay27": "0",
+      "notes": "3 days < 7 day grace period -> no penalty"
+    },
+    {
+      "testId": "delinquency_continued",
+      "description": "10% penalty, already 10 days delinquent, 3 more days, 7 day grace",
+      "penaltyFeeBips": 1000,
+      "previousTimeDelinquent": 864000,
+      "gracePeriodSeconds": 604800,
+      "timeDeltaSeconds": 259200,
+      "isDelinquent": true,
+      "expectedTimeWithPenalty": 259200,
+      "expectedFeeRay27": "821917808219178082191780",
+      "notes": "Already past grace, all 3 days are penalized. 1000bips/10000 * 259200/31536000 * RAY"
+    },
+    {
+      "testId": "recovery_from_delinquency",
+      "description": "Was delinquent for 10 days, now not delinquent for 5 days, 7 day grace",
+      "penaltyFeeBips": 1000,
+      "previousTimeDelinquent": 864000,
+      "gracePeriodSeconds": 604800,
+      "timeDeltaSeconds": 432000,
+      "isDelinquent": false,
+      "expectedTimeWithPenalty": 259200,
+      "expectedNewTimeDelinquent": 432000,
+      "notes": "Recovery: timeDelinquent decreases. Penalty only for time still above grace."
+    }
+  ],
+
+  "withdrawal_batch": [
+    {
+      "testId": "full_payment",
+      "description": "Batch 10000, available 15000 -> pays full 10000",
+      "scaledBatchAmount": "10000000000000000000000",
+      "availableLiquidity": "15000000000000000000000",
+      "scaleFactor27": "1000000000000000000000000000",
+      "expectedScaledAmountBurned": "10000000000000000000000",
+      "expectedNormalizedPaid": "10000000000000000000000"
+    },
+    {
+      "testId": "partial_payment",
+      "description": "Batch 10000, available 6000 -> pays 6000, unpaid 4000",
+      "scaledBatchAmount": "10000000000000000000000",
+      "availableLiquidity": "6000000000000000000000",
+      "scaleFactor27": "1000000000000000000000000000",
+      "expectedScaledAmountBurned": "6000000000000000000000",
+      "expectedNormalizedPaid": "6000000000000000000000"
+    },
+    {
+      "testId": "zero_liquidity",
+      "description": "Batch 10000, available 0 -> pays nothing",
+      "scaledBatchAmount": "10000000000000000000000",
+      "availableLiquidity": "0",
+      "scaleFactor27": "1000000000000000000000000000",
+      "expectedScaledAmountBurned": "0",
+      "expectedNormalizedPaid": "0"
+    }
+  ],
+
+  "liquidity_required": [
+    {
+      "testId": "basic_reserve_20pct",
+      "description": "100K supply, no pending, no unclaimed, no fees, 20% reserve",
+      "scaledTotalSupply": "100000000000000000000000",
+      "scaledPendingWithdrawals": "0",
+      "normalizedUnclaimedWithdrawals": "0",
+      "accruedProtocolFees": "0",
+      "reserveRatioBips": 2000,
+      "scaleFactor27": "1000000000000000000000000000",
+      "expectedLiquidityRequired": "20000000000000000000000",
+      "notes": "20% of 100K = 20K"
+    },
+    {
+      "testId": "reserve_with_pending",
+      "description": "100K supply, 10K pending withdrawal, 20% reserve",
+      "scaledTotalSupply": "100000000000000000000000",
+      "scaledPendingWithdrawals": "10000000000000000000000",
+      "normalizedUnclaimedWithdrawals": "0",
+      "accruedProtocolFees": "0",
+      "reserveRatioBips": 2000,
+      "scaleFactor27": "1000000000000000000000000000",
+      "expectedLiquidityRequired": "28000000000000000000000",
+      "notes": "100% of pending (10K) + 20% of (100K-10K) = 10K + 18K = 28K"
+    }
+  ],
+
+  "margin_call": [
+    {
+      "testId": "margin_call_trigger_threshold",
+      "description": "Liquidity drops below required reserve: supply=1M, borrowed=850K, 20% reserve ratio",
+      "totalSupply": 1000000,
+      "totalBorrowed": 850000,
+      "reserveRatioBips": 2000,
+      "expectedRequiredReserve": 170000,
+      "expectedAvailableLiquidity": 150000,
+      "expectedDeficit": 20000,
+      "triggerMarginCall": true,
+      "notes": "requiredReserve = borrowed * reserveRatioBips / 10000 = 850000 * 2000 / 10000 = 170000. available = supply - borrowed = 150000. deficit = 170000 - 150000 = 20000. Since deficit > 0, margin call triggers."
+    },
+    {
+      "testId": "cure_deadline_calculation",
+      "description": "Margin call timestamp + 72h cure period = deadline",
+      "marginCallTimestamp": 1700000000,
+      "curePeriodSeconds": 259200,
+      "expectedDeadline": 1700259200,
+      "notes": "deadline = marginCallTimestamp + curePeriodSeconds = 1700000000 + 259200 = 1700259200. Borrower must cure deficit before this timestamp or face liquidation."
+    }
+  ],
+
+  "liquidation": [
+    {
+      "testId": "liquidation_state_transition",
+      "description": "Scale factor growth during liquidation: base 500 bips + delinquency 1000 bips over 30 days",
+      "baseRateBips": 500,
+      "delinquencyRateBips": 1000,
+      "combinedRateBips": 1500,
+      "timeDeltaSeconds": 2592000,
+      "initialScaleFactorRay27": "1000000000000000000000000000",
+      "initialScaleFactorRay9": "1000000000",
+      "expectedInterestRay27": "12328767123287671232876712",
+      "expectedInterestRay9": "12328767",
+      "expectedNewScaleFactorRay27": "1012328767123287671232876712",
+      "expectedNewScaleFactorRay9": "1012328767",
+      "notes": "combinedRate = (500 + 1000) = 1500 bips. interest = 1500/10000 * 2592000/31536000 * RAY = 9/730 * RAY. newSF = RAY + interest."
+    },
+    {
+      "testId": "combined_base_delinquency_interest",
+      "description": "Combined accrual: base 500 bips + delinquency 1000 bips over 90 days, initial SF=1.0",
+      "baseRateBips": 500,
+      "delinquencyRateBips": 1000,
+      "combinedRateBips": 1500,
+      "timeDeltaSeconds": 7776000,
+      "initialScaleFactorRay27": "1000000000000000000000000000",
+      "initialScaleFactorRay9": "1000000000",
+      "expectedInterestRay27": "36986301369863013698630136",
+      "expectedInterestRay9": "36986301",
+      "expectedNewScaleFactorRay27": "1036986301369863013698630136",
+      "expectedNewScaleFactorRay9": "1036986301",
+      "notes": "SF_new = SF * (1 + (baseRate + delinquencyRate) * timeDelta / SECONDS_PER_YEAR) = 1e27 * (1 + 1500/10000 * 7776000/31536000) = 1e27 * (1 + 27/730) = 1e27 + 27/730 * 1e27."
+    }
+  ]
+}
