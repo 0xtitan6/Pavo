@@ -29,17 +29,18 @@ describe("TICSBridge E2E Integration", function () {
     signerKey: string,
     marketId: string,
     stateHash: string,
-    cantonTimestamp: number
+    cantonTimestamp: number,
+    nonce: number
   ): Promise<string> {
     const wallet = new ethers.Wallet(signerKey, ethers.provider);
     const msgHash = ethers.solidityPackedKeccak256(
-      ["bytes32", "bytes32", "uint64"],
-      [marketId, stateHash, cantonTimestamp]
+      ["bytes32", "bytes32", "uint64", "uint256"],
+      [marketId, stateHash, cantonTimestamp, nonce]
     );
     const sig = await wallet.signMessage(ethers.getBytes(msgHash));
     const attestation = ethers.AbiCoder.defaultAbiCoder().encode(
-      ["bytes32", "uint64", "bytes"],
-      [stateHash, cantonTimestamp, sig]
+      ["bytes32", "uint64", "uint256", "bytes"],
+      [stateHash, cantonTimestamp, nonce, sig]
     );
     return attestation;
   }
@@ -189,7 +190,8 @@ describe("TICSBridge E2E Integration", function () {
         ATTESTER_PRIVATE_KEY,
         marketId,
         stateHashAfterBorrow,
-        ts1
+        ts1,
+        1
       );
 
       await expect(
@@ -226,7 +228,8 @@ describe("TICSBridge E2E Integration", function () {
         ATTESTER_PRIVATE_KEY,
         marketId,
         stateHashAfterRepay,
-        ts2
+        ts2,
+        2
       );
 
       await bridge.connect(relayer).receiveAttestation(marketId, attestation2);
@@ -309,7 +312,8 @@ describe("TICSBridge E2E Integration", function () {
         ATTESTER_PRIVATE_KEY,
         marketId,
         wrongHash,
-        ts
+        ts,
+        1
       );
       await bridge.connect(relayer).receiveAttestation(marketId, attestation);
 
@@ -339,7 +343,8 @@ describe("TICSBridge E2E Integration", function () {
         ATTESTER_PRIVATE_KEY,
         marketId,
         stateHash,
-        ts
+        ts,
+        1
       );
       await bridge.connect(owner).receiveAttestation(marketId, attestation);
 

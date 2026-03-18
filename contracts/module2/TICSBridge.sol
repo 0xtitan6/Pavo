@@ -31,6 +31,9 @@ contract TICSBridge is ITICSBridge, Ownable2Step, ReentrancyGuard {
     /// @notice Market ID => attestation timestamp
     mapping(bytes32 => uint64) internal _attestationTimestamps;
 
+    /// @notice Market ID => last accepted nonce (monotonically increasing)
+    mapping(bytes32 => uint256) internal _lastNonce;
+
     /// @notice Authorized relayer address
     address public relayer;
 
@@ -40,24 +43,13 @@ contract TICSBridge is ITICSBridge, Ownable2Step, ReentrancyGuard {
     /// @notice Maximum age (in seconds) for a Canton attestation timestamp
     uint64 public constant MAX_ATTESTATION_AGE = 3600;
 
+    /// @notice Timeout for Reserved→Locked transition before reservation can be released
+    uint256 public constant LOCK_TIMEOUT = 1 hours;
+
+    /// @notice Maximum age for attestation to be considered fresh in isInSync()
+    uint256 public constant MAX_DIVERGENCE_AGE = 1 hours;
+
     // ─── Collateral State ─────────────────────────────────────────────
-
-    /// @notice Collateral lifecycle status
-    enum CollateralStatus {
-        None,         // No collateral action
-        Reserved,     // Reservation requested, awaiting lock
-        Locked,       // Collateral locked by custodian
-        Liquidating,  // Liquidation in progress
-        Released      // Collateral released
-    }
-
-    /// @notice Collateral state per market
-    struct CollateralState {
-        CollateralStatus status;
-        bytes32 lockId;
-        uint256 amount;
-        uint32 lastUpdated;
-    }
 
     /// @notice Market collateral states
     mapping(bytes32 => CollateralState) public collateralStates;
@@ -75,6 +67,7 @@ contract TICSBridge is ITICSBridge, Ownable2Step, ReentrancyGuard {
     event MarginCallTriggered(bytes32 indexed marketId, address indexed borrower, uint256 deficit);
     event LiquidationInstructed(bytes32 indexed marketId, address indexed borrower, uint256 amount);
     event CollateralReleased(bytes32 indexed marketId, bytes32 lockId, uint256 amount);
+    event CollateralReservationTimedOut(bytes32 indexed marketId, bytes32 lockId);
 
     // ─── Errors ────────────────────────────────────────────────────────
 
@@ -85,6 +78,8 @@ contract TICSBridge is ITICSBridge, Ownable2Step, ReentrancyGuard {
     error InvalidAttestationSignature();
     error StaleAttestation();
     error InvalidCollateralState();
+    error StaleOrReplayedAttestation();
+    error LockTimeoutNotReached();
 
     // ─── Modifiers ─────────────────────────────────────────────────────
 
@@ -141,17 +136,20 @@ contract TICSBridge is ITICSBridge, Ownable2Step, ReentrancyGuard {
     ) external override nonReentrant onlyRelayerOrOwner {
         if (_marketAddresses[marketId] == address(0)) revert MarketNotRegistered();
 
-        // Decode attestation: stateHash, Canton timestamp, ECDSA signature
-        (bytes32 stateHash, uint64 cantonTimestamp, bytes memory signature) = abi.decode(
+        // Decode attestation: stateHash, Canton timestamp, nonce, ECDSA signature
+        (bytes32 stateHash, uint64 cantonTimestamp, uint256 nonce, bytes memory signature) = abi.decode(
             attestation,
-            (bytes32, uint64, bytes)
+            (bytes32, uint64, uint256, bytes)
         );
 
         // Check staleness
         if (block.timestamp > cantonTimestamp + MAX_ATTESTATION_AGE) revert StaleAttestation();
 
+        // Check nonce is strictly increasing to prevent replay
+        if (nonce <= _lastNonce[marketId]) revert StaleOrReplayedAttestation();
+
         // Compute message hash and recover signer
-        bytes32 msgHash = keccak256(abi.encodePacked(marketId, stateHash, cantonTimestamp));
+        bytes32 msgHash = keccak256(abi.encodePacked(marketId, stateHash, cantonTimestamp, nonce));
         address signer = ECDSA.recover(
             MessageHashUtils.toEthSignedMessageHash(msgHash),
             signature
@@ -160,9 +158,10 @@ contract TICSBridge is ITICSBridge, Ownable2Step, ReentrancyGuard {
         // Verify signer is trusted attester or relayer
         if (signer != trustedAttester && signer != relayer) revert InvalidAttestationSignature();
 
-        // Store the Canton state hash and timestamp
+        // Store the Canton state hash, timestamp, and nonce
         _attestationHashes[marketId] = stateHash;
         _attestationTimestamps[marketId] = cantonTimestamp;
+        _lastNonce[marketId] = nonce;
 
         emit AttestationReceived(marketId, stateHash, cantonTimestamp);
     }
@@ -281,6 +280,23 @@ contract TICSBridge is ITICSBridge, Ownable2Step, ReentrancyGuard {
         emit CollateralReleased(marketId, lockId, amount);
     }
 
+    // ─── Timeout Recovery ─────────────────────────────────────────────
+
+    /// @notice Release a timed-out reservation that was never locked
+    /// @param marketId The market identifier
+    function releaseTimedOutReservation(bytes32 marketId) external onlyRelayerOrOwner {
+        CollateralState storage state = collateralStates[marketId];
+        if (state.status != CollateralStatus.Reserved) revert InvalidCollateralState();
+        if (block.timestamp <= state.lastUpdated + LOCK_TIMEOUT) revert LockTimeoutNotReached();
+
+        bytes32 lockId = state.lockId;
+        state.status = CollateralStatus.None;
+        state.amount = 0;
+        state.lastUpdated = uint32(block.timestamp);
+
+        emit CollateralReservationTimedOut(marketId, lockId);
+    }
+
     // ─── View Functions ────────────────────────────────────────────────
 
     /// @notice Returns the attestation hash for a market
@@ -311,13 +327,23 @@ contract TICSBridge is ITICSBridge, Ownable2Step, ReentrancyGuard {
         return collateralStates[marketId];
     }
 
+    /// @notice Returns the last accepted nonce for a market
+    /// @param marketId The market identifier
+    /// @return The last accepted nonce
+    function getLastNonce(bytes32 marketId) external view returns (uint256) {
+        return _lastNonce[marketId];
+    }
+
     /// @notice Checks if EVM state and Canton attestation are in sync
     /// @param marketId The market identifier
-    /// @return True if both hashes exist and match
+    /// @return True if both hashes exist, match, and attestation is fresh
     function isInSync(bytes32 marketId) external view returns (bool) {
         bytes32 stateHash = _stateHashes[marketId];
         bytes32 attestHash = _attestationHashes[marketId];
-        return stateHash != bytes32(0) && stateHash == attestHash;
+        uint64 attestTime = _attestationTimestamps[marketId];
+        return stateHash != bytes32(0)
+            && stateHash == attestHash
+            && block.timestamp <= attestTime + MAX_DIVERGENCE_AGE;
     }
 
     // ─── Admin ─────────────────────────────────────────────────────────

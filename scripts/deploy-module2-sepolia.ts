@@ -178,6 +178,16 @@ async function main() {
     console.log(`      Sepolia ETH/USD feed: ${SEPOLIA_ETH_USD_FEED}`);
   }
 
+  // Set per-chain staleness threshold
+  const chainId = Number(network.chainId);
+  let stalenessThreshold = 3600; // default: 1 hour (Ethereum mainnet)
+  if (chainId === 11155111) stalenessThreshold = 86400; // Sepolia: 24 hours (generous for testnet)
+  else if (chainId === 42161 || chainId === 8453) stalenessThreshold = 120; // L2: 2 minutes
+
+  const txStaleness = await priceFeedAdapter.setStalenessThreshold(stalenessThreshold);
+  await txStaleness.wait();
+  console.log(`      PriceFeedAdapter staleness threshold set to ${stalenessThreshold}s for chainId ${chainId}`);
+
   // ─── STEP 4: Deploy TICSBridge ─────────────────────────────────────────
 
   console.log("\n[4/7] Deploying TICSBridge...");

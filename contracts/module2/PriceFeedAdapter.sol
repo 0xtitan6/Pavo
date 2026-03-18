@@ -15,6 +15,7 @@ contract PriceFeedAdapter is IPriceFeedAdapter, Ownable2Step {
     error FeedNotSet(address asset);
     error InvalidPrice(address asset, int256 price);
     error ZeroAddress();
+    error InvalidThreshold();
 
     // ─── State ─────────────────────────────────────────────────────────
 
@@ -74,6 +75,7 @@ contract PriceFeedAdapter is IPriceFeedAdapter, Ownable2Step {
 
     /// @inheritdoc IPriceFeedAdapter
     function setStalenessThreshold(uint256 _seconds) external override onlyOwner {
+        if (_seconds < 60 || _seconds > 604800) revert InvalidThreshold(); // 1min to 7 days
         stalenessThreshold = _seconds;
         emit StalenessThresholdUpdated(_seconds);
     }
