@@ -35,6 +35,10 @@ The `contracts/optimizer/` directory is inspired by [MetaMorpho](https://github.
 - Key concepts borrowed: supply/withdraw queues, per-market allocation caps, reallocate function, guardian role
 - Implementation uses OpenZeppelin ERC4626 base instead of custom ERC-4626
 
+## Module 2 — Credit Markets
+
+The `contracts/module2/` directory contains original contracts for custody-native RWA lending. The interest accrual math in `ScaleFactorLib.sol` references standard DeFi scale factor patterns (RAY 1e27 fixed-point arithmetic).
+
 ## OptimizerAdapter
 
 `contracts/adapters/OptimizerAdapter.sol` follows the same patterns as `MorphoAdapter.sol` (per-loanId share tracking, deposit caps, market pause/freeze, emergency withdrawal) but delegates to the ERC-4626 optimizer vault.

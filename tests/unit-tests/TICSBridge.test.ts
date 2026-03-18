@@ -21,17 +21,18 @@ describe("TICSBridge", function () {
     signerKey: string,
     marketId: string,
     stateHash: string,
-    cantonTimestamp: number
+    cantonTimestamp: number,
+    nonce: number
   ): Promise<string> {
     const wallet = new ethers.Wallet(signerKey, ethers.provider);
     const msgHash = ethers.solidityPackedKeccak256(
-      ["bytes32", "bytes32", "uint64"],
-      [marketId, stateHash, cantonTimestamp]
+      ["bytes32", "bytes32", "uint64", "uint256"],
+      [marketId, stateHash, cantonTimestamp, nonce]
     );
     const sig = await wallet.signMessage(ethers.getBytes(msgHash));
     const attestation = ethers.AbiCoder.defaultAbiCoder().encode(
-      ["bytes32", "uint64", "bytes"],
-      [stateHash, cantonTimestamp, sig]
+      ["bytes32", "uint64", "uint256", "bytes"],
+      [stateHash, cantonTimestamp, nonce, sig]
     );
     return attestation;
   }
@@ -245,7 +246,7 @@ describe("TICSBridge", function () {
       const cantonTimestamp = ts;
 
       const attestation = await signAttestation(
-        ATTESTER_PRIVATE_KEY, marketId, stateHash, cantonTimestamp
+        ATTESTER_PRIVATE_KEY, marketId, stateHash, cantonTimestamp, 1
       );
 
       await expect(bridge.receiveAttestation(marketId, attestation))
@@ -264,14 +265,15 @@ describe("TICSBridge", function () {
       const ts = await time.latest();
 
       // Sign with relayer's key (signer[1])
+      const nonce = 1;
       const msgHash = ethers.solidityPackedKeccak256(
-        ["bytes32", "bytes32", "uint64"],
-        [marketId, stateHash, ts]
+        ["bytes32", "bytes32", "uint64", "uint256"],
+        [marketId, stateHash, ts, nonce]
       );
       const sig = await relayer.signMessage(ethers.getBytes(msgHash));
       const attestation = ethers.AbiCoder.defaultAbiCoder().encode(
-        ["bytes32", "uint64", "bytes"],
-        [stateHash, ts, sig]
+        ["bytes32", "uint64", "uint256", "bytes"],
+        [stateHash, ts, nonce, sig]
       );
 
       await expect(bridge.connect(relayer).receiveAttestation(marketId, attestation))
@@ -287,7 +289,7 @@ describe("TICSBridge", function () {
 
       // Sign with a random unknown key (not any Hardhat default account)
       const randomKey = "0x1111111111111111111111111111111111111111111111111111111111111111";
-      const attestation = await signAttestation(randomKey, marketId, stateHash, ts);
+      const attestation = await signAttestation(randomKey, marketId, stateHash, ts, 1);
 
       await expect(bridge.receiveAttestation(marketId, attestation))
         .to.be.revertedWithCustomError(bridge, "InvalidAttestationSignature");
@@ -303,7 +305,7 @@ describe("TICSBridge", function () {
       const staleTimestamp = currentTime - 3601;
 
       const attestation = await signAttestation(
-        ATTESTER_PRIVATE_KEY, marketId, stateHash, staleTimestamp
+        ATTESTER_PRIVATE_KEY, marketId, stateHash, staleTimestamp, 1
       );
 
       await expect(bridge.receiveAttestation(marketId, attestation))
@@ -315,7 +317,7 @@ describe("TICSBridge", function () {
       const fakeId = ethers.keccak256(ethers.toUtf8Bytes("fake"));
       const stateHash = ethers.keccak256(ethers.toUtf8Bytes("data"));
 
-      const attestation = await signAttestation(ATTESTER_PRIVATE_KEY, fakeId, stateHash, 12345);
+      const attestation = await signAttestation(ATTESTER_PRIVATE_KEY, fakeId, stateHash, 12345, 1);
 
       await expect(bridge.receiveAttestation(fakeId, attestation))
         .to.be.revertedWithCustomError(bridge, "MarketNotRegistered");
@@ -327,7 +329,7 @@ describe("TICSBridge", function () {
 
       const stateHash = ethers.keccak256(ethers.toUtf8Bytes("data"));
       const ts = await time.latest();
-      const attestation = await signAttestation(ATTESTER_PRIVATE_KEY, marketId, stateHash, ts);
+      const attestation = await signAttestation(ATTESTER_PRIVATE_KEY, marketId, stateHash, ts, 1);
 
       await expect(
         bridge.connect(nonOwner).receiveAttestation(marketId, attestation)
@@ -340,13 +342,13 @@ describe("TICSBridge", function () {
 
       const stateHash1 = ethers.keccak256(ethers.toUtf8Bytes("first"));
       const ts1 = await time.latest();
-      const attestation1 = await signAttestation(ATTESTER_PRIVATE_KEY, marketId, stateHash1, ts1);
+      const attestation1 = await signAttestation(ATTESTER_PRIVATE_KEY, marketId, stateHash1, ts1, 1);
       await bridge.receiveAttestation(marketId, attestation1);
       expect(await bridge.getAttestationHash(marketId)).to.equal(stateHash1);
 
       const stateHash2 = ethers.keccak256(ethers.toUtf8Bytes("second"));
       const ts2 = await time.latest();
-      const attestation2 = await signAttestation(ATTESTER_PRIVATE_KEY, marketId, stateHash2, ts2);
+      const attestation2 = await signAttestation(ATTESTER_PRIVATE_KEY, marketId, stateHash2, ts2, 2);
       await bridge.receiveAttestation(marketId, attestation2);
       expect(await bridge.getAttestationHash(marketId)).to.equal(stateHash2);
 
@@ -378,7 +380,7 @@ describe("TICSBridge", function () {
       // Submit an attestation with a different stateHash
       const wrongHash = ethers.keccak256(ethers.toUtf8Bytes("wrong-data"));
       const ts = await time.latest();
-      const attestation = await signAttestation(ATTESTER_PRIVATE_KEY, marketId, wrongHash, ts);
+      const attestation = await signAttestation(ATTESTER_PRIVATE_KEY, marketId, wrongHash, ts, 1);
       await bridge.receiveAttestation(marketId, attestation);
 
       expect(await bridge.isInSync(marketId)).to.be.false;
@@ -394,7 +396,7 @@ describe("TICSBridge", function () {
 
       // Submit attestation with the exact same stateHash
       const ts = await time.latest();
-      const attestation = await signAttestation(ATTESTER_PRIVATE_KEY, marketId, stateHash, ts);
+      const attestation = await signAttestation(ATTESTER_PRIVATE_KEY, marketId, stateHash, ts, 1);
       await bridge.receiveAttestation(marketId, attestation);
 
       expect(await bridge.isInSync(marketId)).to.be.true;
@@ -492,6 +494,102 @@ describe("TICSBridge", function () {
     it("MAX_ATTESTATION_AGE is 3600", async function () {
       const { bridge } = await loadFixture(deployBridgeFixture);
       expect(await bridge.MAX_ATTESTATION_AGE()).to.equal(3600);
+    });
+  });
+
+  // ─── Nonce / Replay Protection ─────────────────────────────────────
+
+  describe("Nonce and replay protection", function () {
+    it("rejects replay with same nonce (StaleOrReplayedAttestation)", async function () {
+      const { bridge, marketId, marketAddress } = await loadFixture(deployBridgeFixture);
+      await bridge.registerMarket(marketId, marketAddress);
+
+      const stateHash = ethers.keccak256(ethers.toUtf8Bytes("replay-test"));
+      const ts = await time.latest();
+
+      const attestation1 = await signAttestation(ATTESTER_PRIVATE_KEY, marketId, stateHash, ts, 1);
+      await bridge.receiveAttestation(marketId, attestation1);
+
+      // Same nonce=1 should revert
+      const stateHash2 = ethers.keccak256(ethers.toUtf8Bytes("replay-test-2"));
+      const ts2 = await time.latest();
+      const attestation2 = await signAttestation(ATTESTER_PRIVATE_KEY, marketId, stateHash2, ts2, 1);
+
+      await expect(bridge.receiveAttestation(marketId, attestation2))
+        .to.be.revertedWithCustomError(bridge, "StaleOrReplayedAttestation");
+    });
+
+    it("getLastNonce returns correct nonce after attestation", async function () {
+      const { bridge, marketId, marketAddress } = await loadFixture(deployBridgeFixture);
+      await bridge.registerMarket(marketId, marketAddress);
+
+      const stateHash = ethers.keccak256(ethers.toUtf8Bytes("nonce-test"));
+      const ts = await time.latest();
+
+      const attestation = await signAttestation(ATTESTER_PRIVATE_KEY, marketId, stateHash, ts, 5);
+      await bridge.receiveAttestation(marketId, attestation);
+
+      expect(await bridge.getLastNonce(marketId)).to.equal(5);
+    });
+  });
+
+  // ─── releaseTimedOutReservation ────────────────────────────────────
+
+  describe("releaseTimedOutReservation", function () {
+    it("releases reservation after LOCK_TIMEOUT", async function () {
+      const { bridge, relayer, borrower, marketId, marketAddress } = await loadFixture(deployBridgeFixture);
+      await bridge.registerMarket(marketId, marketAddress);
+
+      // Reserve collateral
+      const amount = ethers.parseUnits("10000", 6);
+      await bridge.connect(relayer).requestCollateralReserve(marketId, borrower.address, amount);
+
+      // Advance time past LOCK_TIMEOUT (1 hour)
+      await time.increase(3601);
+
+      await expect(bridge.releaseTimedOutReservation(marketId))
+        .to.emit(bridge, "CollateralReservationTimedOut");
+
+      const cs = await bridge.getCollateralState(marketId);
+      expect(cs.status).to.equal(0); // None
+    });
+
+    it("reverts if timeout not reached (LockTimeoutNotReached)", async function () {
+      const { bridge, relayer, borrower, marketId, marketAddress } = await loadFixture(deployBridgeFixture);
+      await bridge.registerMarket(marketId, marketAddress);
+
+      // Reserve collateral
+      const amount = ethers.parseUnits("10000", 6);
+      await bridge.connect(relayer).requestCollateralReserve(marketId, borrower.address, amount);
+
+      // Immediately try to release — should revert
+      await expect(bridge.releaseTimedOutReservation(marketId))
+        .to.be.revertedWithCustomError(bridge, "LockTimeoutNotReached");
+    });
+  });
+
+  // ─── isInSync divergence age ──────────────────────────────────────
+
+  describe("isInSync divergence age", function () {
+    it("returns false when attestation older than MAX_DIVERGENCE_AGE", async function () {
+      const { bridge, marketId, marketAddress } = await loadFixture(deployBridgeFixture);
+      await bridge.registerMarket(marketId, marketAddress);
+
+      // Sync state and submit matching attestation
+      await bridge.syncMarketState(marketId);
+      const stateHash = await bridge.getMarketStateHash(marketId);
+      const ts = await time.latest();
+      const attestation = await signAttestation(ATTESTER_PRIVATE_KEY, marketId, stateHash, ts, 1);
+      await bridge.receiveAttestation(marketId, attestation);
+
+      // Should be in sync now
+      expect(await bridge.isInSync(marketId)).to.be.true;
+
+      // Advance time past MAX_DIVERGENCE_AGE (1 hour)
+      await time.increase(3601);
+
+      // Should no longer be in sync
+      expect(await bridge.isInSync(marketId)).to.be.false;
     });
   });
 });

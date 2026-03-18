@@ -17,7 +17,7 @@ import './libraries/CreditEvents.sol';
 /// @title CreditMarket - Per-borrower undercollateralized credit facility
 /// @notice Maps 1:1 to DAML Module2.Market template (8 choices)
 /// @dev One CreditMarket deployed per borrower-asset pair via Orchestrator (CREATE2)
-///      Adapted from Wildcat Finance MarketState patterns (Apache-2.0)
+///      Custody-native RWA lending with Canton/DAML cross-platform state synchronization
 ///
 ///      Key Financial Invariants (matching DAML):
 ///        - scaleFactor >= RAY (starts at 1e27, only grows)

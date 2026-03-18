@@ -71,6 +71,42 @@
 
 **Summary**: All CRITICAL/HIGH/MEDIUM/LOW findings fixed. Only INFO-level design decisions remain open.
 
+### Module 2 — Credit Markets (CreditMarket, Orchestrator, TICSBridge)
+
+| ID | Description | Severity | Status |
+|----|-------------|----------|--------|
+| M2-1 | LoanPositionToken uses `require()` instead of custom errors | LOW | **OPEN** — Refactor to CreditErrors.* |
+| M2-2 | Missing zero-address checks in Orchestrator setters (setTICSBridge, setSanctionsSentinel, setPriceFeedAdapter) | LOW | **OPEN** — Add checks |
+| M2-3 | `setTransferability()` and `setCustodianSignature()` not in ILoanPositionToken interface | LOW | **OPEN** — Add to interface |
+| M2-4 | `registerLender()` has no sanctions check (only `authorizeBorrower()` does) | LOW | **OPEN** — Add `_checkSanctions(lender)` |
+| M2-5 | TICSBridge signature accepts both relayer AND attester as valid signers | MEDIUM | **BY DESIGN** — OR gate for operational flexibility |
+| M2-6 | No timeout for LOCKED collateral state (only RESERVED has timeout) | LOW | **OPEN** — Consider adding LOCKED timeout |
+| M2-7 | `_computeMarketStateHash` fallback hashes `(market, block.number)` on staticcall failure | INFO | **DOCUMENTED** — Attestation signature prevents spoofing |
+| M2-8 | No post-deployment verification script for multi-step initialization | MEDIUM | **OPEN** — Create verification script |
+
+### Pool — ParthenonPool (Morpho Blue Fork)
+
+| ID | Description | Severity | Status |
+|----|-------------|----------|--------|
+| P-1 | Morpho Blue fork with Ownable2Step and ReentrancyGuard additions | INFO | **BY DESIGN** — Security hardening over upstream |
+| P-2 | SafeTransferLib operates on `address` instead of `IERC20` (scoped to pool/) | INFO | **BY DESIGN** — Matches upstream Morpho pattern |
+
+### Optimizer — ParthenonOptimizer (MetaMorpho-inspired)
+
+| ID | Description | Severity | Status |
+|----|-------------|----------|--------|
+| O-1 | Clean-room reimplementation, not line-by-line fork | INFO | **DOCUMENTED** — See ATTRIBUTION.md |
+
+### Oracle — PriceFeedAdapter (Module 2)
+
+| ID | Description | Severity | Status |
+|----|-------------|----------|--------|
+| OR-1 | No L2 sequencer uptime feed support | HIGH | **OPEN** — Required before L2 deploy |
+| OR-2 | Single feed per asset, no fallback oracle | MEDIUM | **OPEN** — Post-launch improvement |
+| OR-3 | No price deviation / circuit breaker checks | MEDIUM | **OPEN** — Post-launch improvement |
+| OR-4 | `setFeed()` doesn't validate feed returns data | LOW | **OPEN** — Document for auditors |
+| OR-5 | Staleness threshold bounded to 60s–604800s | INFO | **FIXED** — Sprint 7 |
+
 ---
 
 ## 2. Test Coverage Report
@@ -79,9 +115,11 @@
 
 | Suite | Tests | Status |
 |-------|-------|--------|
-| parthenonfi-contracts (Solidity + TS) | 866 | All passing |
-| parthenonfi-vaults | 128 | All passing |
-| **Total** | **994** | **All passing** |
+| Module 1 (LoanFactory, PriceOracle, AssetRegistry, Adapters) | 866 | All passing |
+| Module 2 (CreditMarket, Orchestrator, TICSBridge, LPT, PriceFeedAdapter, SanctionsSentinel) | 400+ | All passing |
+| Pool (ParthenonPool — Morpho Blue fork) | 200+ | All passing |
+| Optimizer (ParthenonOptimizer) | 100+ | All passing |
+| **Total parthenonfi-contracts** | **1577** | **All passing** |
 
 ### Coverage by Contract (parthenonfi-contracts)
 
@@ -98,9 +136,36 @@
 
 **Branch gaps**: Remaining uncovered branches are exclusively `nonReentrant`/`onlyOwner`/`whenNotPaused` modifier branches — inherently untestable without reentrancy attacks.
 
+### Module 2 Coverage
+
+| Contract | Notes |
+|----------|-------|
+| CreditMarket.sol | 13 test suites (borrow, deposit, repay, withdrawal, liquidation, delinquency, marginCall, batchExpiry, crossMarket, integration, fuzz, gas, branches) |
+| Orchestrator.sol | 1 test suite |
+| TICSBridge.sol | 4 test suites (core, e2e, keeper, downtime) |
+| LoanPositionToken.sol | 2 test suites |
+| PriceFeedAdapter.sol | 1 test suite |
+| SanctionsSentinel.sol | 2 test suites (unit + integration) |
+| ScaleFactorLib.sol | Property-based fuzz tests |
+
+### Pool Coverage
+
+| Contract | Notes |
+|----------|-------|
+| ParthenonPool.sol | 14 test suites (supply, borrow, repay, withdraw, liquidate, createMarket, authorization, collateral, accrueInterest, flashLoan, security, edgeCases, fuzz, gas) |
+| FixedRateIrm.sol | 1 test suite |
+| PoolOracleAdapter.sol | 1 test suite |
+
+### Optimizer Coverage
+
+| Contract | Notes |
+|----------|-------|
+| ParthenonOptimizer.sol | 6 test suites (deposit, withdraw, reallocation, multiStrategy, erc4626, fees) |
+| OptimizerAdapter.sol | 1 test suite |
+
 ### Test Structure
 - **Solidity test contracts** (`contracts/test/Test1-Test10`): Core logic, edge cases, branch coverage, precision fuzz
-- **TypeScript tests** (`tests/unit-tests/`): Integration, adapter lifecycle, event verification
+- **TypeScript tests** (`tests/unit-tests/`): Integration, adapter lifecycle, event verification, Module 2/Pool/Optimizer
 - **Mocks**: MockERC20, MockAggregatorV3, MockMorpho, MockBoringVault, MockTeller, MockYieldAdapter, MockAccountantConfigurable
 
 ---
@@ -130,6 +195,11 @@
 | LoanFactory | createLoan, cancelLoan, takeUpLoan, liquidateLoan, endLoan, interruptLoan, topUp | All state-changing |
 | MorphoAdapter | deposit, withdraw, withdrawPartial, emergencyWithdraw, batchEmergencyWithdraw | All state-changing |
 | ParthenonVaultAdapter | deposit, withdraw, emergencyWithdraw | All state-changing |
+| CreditMarket | deposit, borrow, repay, requestWithdrawal, processWithdrawalBatch, claimWithdrawal, accrueInterest, closeMarket, marginCall, cure, liquidate | All state-changing |
+| TICSBridge | syncMarketState, receiveAttestation | State sync functions |
+| ParthenonPool | supply, withdraw, borrow, repay, supplyCollateral, withdrawCollateral, liquidate, flashLoan | All state-changing (inline guard) |
+| ParthenonOptimizer | deposit, mint, withdraw, redeem, reallocate | All state-changing |
+| Orchestrator | createMarket | Market factory |
 | PriceOracle | N/A (no token transfers) | N/A |
 | AssetRegistry | N/A (no token transfers) | N/A |
 
@@ -137,9 +207,12 @@
 
 | Pattern | Contracts |
 |---------|-----------|
-| Ownable2Step (two-step ownership) | LoanFactory, PriceOracle, AssetRegistry, MorphoAdapter, ParthenonVaultAdapter |
+| Ownable2Step (two-step ownership) | LoanFactory, PriceOracle, AssetRegistry, MorphoAdapter, ParthenonVaultAdapter, TICSBridge, ParthenonPool |
 | onlyOwner (admin functions) | All contracts with admin operations |
 | onlyLoanFactory (runtime operations) | MorphoAdapter, ParthenonVaultAdapter |
+| onlyRelayerOrOwner | TICSBridge (state sync, collateral confirmations) |
+| onlyProtocolOperator | CreditMarket (marginCall, liquidate) |
+| onlyBorrower / onlyOrchestrator | CreditMarket (role-restricted functions) |
 | msg.sender authorization | LoanFactory (cancelLoan, takeUpLoan borrower/lender checks) |
 
 ### Oracle Safety (PriceOracle)
@@ -210,10 +283,23 @@ ParthenonFi is a **custody-native P2P RWA lending protocol**. Key flows:
 - Morpho Blue (IMorpho interface for MorphoAdapter)
 - BoringVault / Teller (ITeller, IAccountant interfaces for ParthenonVaultAdapter)
 
+### Module 2 Focus Areas
+7. **CreditMarket state machine** — Deposit → borrow → repay → withdrawal batch → delinquency → margin call → liquidation. Singleton withdrawal batch (one pending at a time). Verify batch processing during delinquency/liquidation edge cases.
+8. **ScaleFactorLib (RAY math)** — Interest accrual using 1e27 fixed-point. Cross-platform parity with DAML (1e9 scale). 14 parity test vectors. Verify no precision loss across accrual periods.
+9. **TICSBridge attestation** — ECDSA signature verification with nonce-based replay protection. Verify collateral state machine transitions and timeout recovery.
+10. **Orchestrator credit limits** — Per-tier credit limit enforcement across multiple markets. Normalized to 18 decimals. Verify no overflow/underflow in cross-market accounting.
+
+### Pool Focus Areas
+11. **ParthenonPool (Morpho Blue fork)** — Isolated lending markets with Ownable2Step and ReentrancyGuard additions. Verify security hardening doesn't break upstream invariants.
+12. **Flash loans** — Verify callback safety and fee enforcement.
+
+### Optimizer Focus Areas
+13. **ParthenonOptimizer (MetaMorpho-inspired)** — Supply/withdraw queues, per-market allocation caps. Verify ERC-4626 share calculation correctness and reallocation safety.
+
 ### Build & Test
 ```bash
 pnpm install
 npx hardhat compile
-npx hardhat test              # 866 tests
+npx hardhat test              # 1577 tests
 npx hardhat coverage          # Note: VaultAdapter shows 0% in full suite (tool artifact)
 ```
