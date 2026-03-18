@@ -2,7 +2,7 @@
 pragma solidity ^0.8.28;
 
 /// @title ScaleFactorLib - RAY (1e27) fixed-point arithmetic for scale factor interest accrual
-/// @notice Adapted from Wildcat Finance MathUtils.sol + FeeMath.sol (Apache-2.0)
+/// @notice RAY (1e27) fixed-point interest accrual, delinquency penalties, and scale factor updates
 /// @dev Must produce identical results to DAML ScaleMath.daml (which uses RAY=1e9)
 ///      Formulas are identical; only the RAY constant differs.
 ///      See test-vectors/module2-math.json for cross-platform parity assertions.
@@ -125,7 +125,7 @@ library ScaleFactorLib {
     /// @param timeDelta Seconds since last update
     /// @return timeWithPenalty Seconds subject to penalty fees
     /// @return newTimeDelinquent Updated total delinquent time
-    /// @dev Matches Wildcat FeeMath.updateTimeDelinquentAndGetPenaltyTime
+    /// @dev Computes penalty time from delinquency state transitions
     function updateTimeDelinquentAndGetPenaltyTime(
         bool isDelinquent,
         uint256 previousTimeDelinquent,
@@ -146,7 +146,7 @@ library ScaleFactorLib {
     // ─── Full Scale Factor Update ──────────────────────────────────────
 
     /// @notice Calculate interest, delinquency fees, and protocol fees; update scale factor
-    /// @dev Matches Wildcat FeeMath.updateScaleFactorAndFees + DAML Market.AccrueInterest
+    /// @dev Updates scale factor with interest + delinquency fees. Parity with DAML Market.AccrueInterest
     /// @param scaleFactor Current scale factor
     /// @param annualInterestBips Annual interest in bips
     /// @param delinquencyFeeBips Penalty fee in bips

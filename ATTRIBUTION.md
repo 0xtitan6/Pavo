@@ -35,26 +35,9 @@ The `contracts/optimizer/` directory is inspired by [MetaMorpho](https://github.
 - Key concepts borrowed: supply/withdraw queues, per-market allocation caps, reallocate function, guardian role
 - Implementation uses OpenZeppelin ERC4626 base instead of custom ERC-4626
 
-## Wildcat Finance — Module 2 Math and Patterns
+## Module 2 — Credit Markets
 
-The `contracts/module2/` directory adapts math and state machine patterns from [Wildcat Finance](https://github.com/wildcat-finance/v2-protocol).
-
-- **Source:** `wildcat-finance/v2-protocol`
-- **License:** Apache-2.0
-- **Original Authors:** Wildcat Finance
-
-### Adapted contracts:
-- `contracts/module2/libraries/ScaleFactorLib.sol` — Adapted from Wildcat's `MathUtils.sol` + `FeeMath.sol`. Interest accrual, delinquency penalties, and scale factor updates using RAY (1e27) fixed-point arithmetic.
-- `contracts/module2/libraries/CreditTypesLib.sol` — Type definitions mapped from Wildcat's market state model. Maps 1:1 to DAML `WildcatTypes.daml`.
-- `contracts/module2/CreditMarket.sol` — State machine patterns (deposit → borrow → repay → withdrawal batching → delinquency → margin call → liquidation) adapted from Wildcat's `MarketState` patterns.
-
-### Key differences from upstream:
-- RAY constant: 1e27 (Wildcat uses 1e27 in Solidity, DAML uses 1e9 for Numeric 10 scale)
-- Added TICSBridge integration for Canton/DAML cross-platform state sync
-- Added sanctions screening via SanctionsSentinel (Chainalysis integration)
-- Added LoanPositionToken (ERC-20 position tokens with transfer restrictions)
-- Added Orchestrator for factory + governance + credit tier management
-- Substantially different architecture: custody-native RWA lending vs. permissionless credit markets
+The `contracts/module2/` directory contains original contracts for custody-native RWA lending. The interest accrual math in `ScaleFactorLib.sol` references standard DeFi scale factor patterns (RAY 1e27 fixed-point arithmetic).
 
 ## OptimizerAdapter
 

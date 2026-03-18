@@ -2,9 +2,9 @@
 pragma solidity ^0.8.28;
 
 /// @title CreditTypesLib - Shared types for Module 2 undercollateralized lending
-/// @notice Maps 1:1 to DAML WildcatTypes.daml
+/// @notice Credit market type definitions — maps 1:1 to DAML shared types
 library CreditTypesLib {
-    // ─── Enums (match DAML WildcatTypes exactly) ───────────────────────
+    // ─── Enums (match DAML types exactly) ───────────────────────────────
 
     /// @notice Market operational status
     enum MarketStatus {
