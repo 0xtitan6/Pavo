@@ -79,20 +79,18 @@ contract LoanPositionToken is ERC20, ILoanPositionToken {
     /// @notice Sets the transferability mode
     /// @param mode The new transfer restriction mode
     function setTransferability(CreditTypesLib.Transferability mode) external {
-        require(
-            msg.sender == market || msg.sender == Ownable(orchestratorAddr).owner(),
-            "Unauthorized"
-        );
+        if (msg.sender != market && msg.sender != Ownable(orchestratorAddr).owner()) {
+            revert CreditErrors.UnauthorizedLender();
+        }
         transferability = mode;
     }
 
     /// @notice Sets the custodian signature for institutional verification
     /// @param sig The custodian signature hash
     function setCustodianSignature(bytes32 sig) external {
-        require(
-            msg.sender == market || msg.sender == Ownable(orchestratorAddr).owner(),
-            "Unauthorized"
-        );
+        if (msg.sender != market && msg.sender != Ownable(orchestratorAddr).owner()) {
+            revert CreditErrors.UnauthorizedLender();
+        }
         custodianSignature = sig;
     }
 

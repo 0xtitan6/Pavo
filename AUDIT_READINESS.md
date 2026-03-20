@@ -75,14 +75,14 @@
 
 | ID | Description | Severity | Status |
 |----|-------------|----------|--------|
-| M2-1 | LoanPositionToken uses `require()` instead of custom errors | LOW | **OPEN** — Refactor to CreditErrors.* |
-| M2-2 | Missing zero-address checks in Orchestrator setters (setTICSBridge, setSanctionsSentinel, setPriceFeedAdapter) | LOW | **OPEN** — Add checks |
-| M2-3 | `setTransferability()` and `setCustodianSignature()` not in ILoanPositionToken interface | LOW | **OPEN** — Add to interface |
-| M2-4 | `registerLender()` has no sanctions check (only `authorizeBorrower()` does) | LOW | **OPEN** — Add `_checkSanctions(lender)` |
+| M2-1 | LoanPositionToken uses `require()` instead of custom errors | LOW | **FIXED** — Replaced with `CreditErrors.UnauthorizedLender()` reverts |
+| M2-2 | Missing zero-address checks in Orchestrator setters (setTICSBridge, setSanctionsSentinel, setPriceFeedAdapter) | LOW | **FIXED** — Added `CreditErrors.ZeroAddress()` checks |
+| M2-3 | `setTransferability()` and `setCustodianSignature()` not in ILoanPositionToken interface | LOW | **FIXED** — Added to interface with NatSpec |
+| M2-4 | `registerLender()` has no sanctions check (only `authorizeBorrower()` does) | LOW | **FIXED** — `_checkSanctions(lender)` already present |
 | M2-5 | TICSBridge signature accepts both relayer AND attester as valid signers | MEDIUM | **BY DESIGN** — OR gate for operational flexibility |
-| M2-6 | No timeout for LOCKED collateral state (only RESERVED has timeout) | LOW | **OPEN** — Consider adding LOCKED timeout |
+| M2-6 | No timeout for LOCKED collateral state (only RESERVED has timeout) | LOW | **BY DESIGN** — Lock timeout managed off-chain by custody-integration ReconciliationEngine; custodian holds collateral and keeper monitors for stale locks |
 | M2-7 | `_computeMarketStateHash` fallback hashes `(market, block.number)` on staticcall failure | INFO | **DOCUMENTED** — Attestation signature prevents spoofing |
-| M2-8 | No post-deployment verification script for multi-step initialization | MEDIUM | **OPEN** — Create verification script |
+| M2-8 | No post-deployment verification script for multi-step initialization | MEDIUM | **FIXED** — `scripts/verify-module2-deployment.ts` validates all contract wiring |
 
 ### Pool — ParthenonPool (Morpho Blue Fork)
 

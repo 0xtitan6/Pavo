@@ -2,6 +2,7 @@
 pragma solidity ^0.8.28;
 
 import '@openzeppelin/contracts/token/ERC20/IERC20.sol';
+import '../libraries/CreditTypesLib.sol';
 
 /// @title ILoanPositionToken - Non-rebasing ERC-20 representing lender positions
 /// @notice Maps to DAML Module2.LenderPosition template
@@ -22,4 +23,12 @@ interface ILoanPositionToken is IERC20 {
 
     /// @notice Burn scaled tokens (only callable by market)
     function burn(address from, uint256 scaledAmount) external;
+
+    /// @notice Sets the transferability mode
+    /// @param mode The new transfer restriction mode
+    function setTransferability(CreditTypesLib.Transferability mode) external;
+
+    /// @notice Sets the custodian signature for institutional verification
+    /// @param sig The custodian signature hash
+    function setCustodianSignature(bytes32 sig) external;
 }

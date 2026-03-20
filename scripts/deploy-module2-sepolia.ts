@@ -21,6 +21,8 @@
  *
  * Optional env vars:
  *   FEE_RECIPIENT      - protocol fee recipient (default: deployer)
+ *   RELAYER_ADDRESS    - custody-integration relayer EOA for TICSBridge (default: deployer)
+ *   ATTESTER_ADDRESS   - Canton attestation verifier for TICSBridge (default: deployer)
  *   LENDER_ADDRESS     - initial lender to register
  *   BORROWER_TIER      - credit tier 0-3 (default: 1 = TIER_2 $500K)
  *   INTEREST_BIPS      - annual interest rate in bips (default: 500 = 5%)
@@ -116,6 +118,8 @@ async function main() {
   // ─── Resolve configuration ─────────────────────────────────────────────────
 
   const feeRecipient = process.env.FEE_RECIPIENT ?? deployer.address;
+  const relayerAddress = process.env.RELAYER_ADDRESS ?? deployer.address;
+  const attesterAddress = process.env.ATTESTER_ADDRESS ?? deployer.address;
   const assetToken = process.env.ASSET_TOKEN!;
   const borrowerAddress = process.env.BORROWER_ADDRESS!;
   const lenderAddress = process.env.LENDER_ADDRESS;
@@ -192,12 +196,12 @@ async function main() {
 
   console.log("\n[4/7] Deploying TICSBridge...");
   const TICSBridge = await ethers.getContractFactory("TICSBridge");
-  const ticsBridge = await TICSBridge.deploy(deployer.address, deployer.address); // deployer as initial relayer + attester
+  const ticsBridge = await TICSBridge.deploy(relayerAddress, attesterAddress);
   await ticsBridge.waitForDeployment();
   const ticsBridgeAddress = await ticsBridge.getAddress();
   console.log(`      TICSBridge: ${ticsBridgeAddress}`);
-  console.log(`      Relayer: ${deployer.address}`);
-  console.log(`      Attester: ${deployer.address}`);
+  console.log(`      Relayer: ${relayerAddress}`);
+  console.log(`      Attester: ${attesterAddress}`);
 
   // ─── STEP 4b: Wire up Orchestrator with Sentinel and Adapter ───────────
 
@@ -257,7 +261,7 @@ async function main() {
   await verifyContract(orchestratorAddress, [feeRecipient], "Orchestrator");
   await verifyContract(sentinelAddress, [ethers.ZeroAddress], "SanctionsSentinel");
   await verifyContract(adapterAddress, [], "PriceFeedAdapter");
-  await verifyContract(ticsBridgeAddress, [deployer.address, deployer.address], "TICSBridge");
+  await verifyContract(ticsBridgeAddress, [relayerAddress, attesterAddress], "TICSBridge");
   await verifyContract(marketAddress, [], "CreditMarket (proxy via Orchestrator)");
 
   // ─── Save deployment manifest ─────────────────────────────────────────────
@@ -279,8 +283,8 @@ async function main() {
       borrowerAddress,
       borrowerTier,
       assetToken,
-      relayer: deployer.address,
-      attester: deployer.address,
+      relayer: relayerAddress,
+      attester: attesterAddress,
       marketParams: {
         annualInterestBips: marketParams.annualInterestBips,
         delinquencyFeeBips: marketParams.delinquencyFeeBips,

@@ -276,7 +276,7 @@ describe("LoanPositionToken", function () {
 
       // Non-authorized user should be reverted
       await expect(lpt.connect(lender).setTransferability(2))
-        .to.be.revertedWith("Unauthorized");
+        .to.be.revertedWithCustomError(lpt, "UnauthorizedLender");
     });
 
     it("Owner can change transferability", async function () {
@@ -311,7 +311,7 @@ describe("LoanPositionToken", function () {
 
       const sig = ethers.keccak256(ethers.toUtf8Bytes("test"));
       await expect(lpt.connect(lender).setCustodianSignature(sig))
-        .to.be.revertedWith("Unauthorized");
+        .to.be.revertedWithCustomError(lpt, "UnauthorizedLender");
     });
   });
 

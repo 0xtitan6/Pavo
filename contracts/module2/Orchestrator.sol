@@ -267,18 +267,21 @@ contract Orchestrator is IOrchestrator, Ownable2Step, ReentrancyGuard {
     /// @notice Sets the TICS bridge address for attestations
     /// @param _bridge The bridge contract address
     function setTICSBridge(address _bridge) external onlyOwner {
+        if (_bridge == address(0)) revert CreditErrors.ZeroAddress();
         ticsBridge = _bridge;
     }
 
     /// @notice Sets the sanctions sentinel address
     /// @param _sentinel The SanctionsSentinel contract address
     function setSanctionsSentinel(address _sentinel) external onlyOwner {
+        if (_sentinel == address(0)) revert CreditErrors.ZeroAddress();
         sanctionsSentinel = _sentinel;
     }
 
     /// @notice Sets the price feed adapter address
     /// @param _adapter The PriceFeedAdapter contract address
     function setPriceFeedAdapter(address _adapter) external onlyOwner {
+        if (_adapter == address(0)) revert CreditErrors.ZeroAddress();
         priceFeedAdapter = _adapter;
     }
 
