@@ -438,6 +438,7 @@ contract MorphoAdapter is IYieldAdapter, Ownable2Step, ReentrancyGuard {
         require(loanIds.length <= MAX_BATCH_SIZE, "Batch too large");
 
         MarketParams memory params = markets[token];
+        uint256 positionsClosed;
 
         for (uint256 i = 0; i < loanIds.length; i++) {
             uint256 loanId = loanIds[i];
@@ -449,7 +450,7 @@ contract MorphoAdapter is IYieldAdapter, Ownable2Step, ReentrancyGuard {
             depositedAmount[loanId][token] = 0;
             totalDepositedAssets[token] -= deposited;
             activePositions[token]--;
-            totalActivePositions--;
+            positionsClosed++;
             totalShares[token] -= shares;
             _positionsByToken[token].remove(loanId);
 
@@ -459,6 +460,7 @@ contract MorphoAdapter is IYieldAdapter, Ownable2Step, ReentrancyGuard {
 
             emit EmergencyWithdrawn(loanId, token, assets, shares, to);
         }
+        totalActivePositions -= positionsClosed;
         require(totalAssets > 0, "No assets withdrawn");
     }
 

@@ -9,8 +9,6 @@ import "../mocks/LoanCalculatorTest.sol";
 ///         Targets the 65% → 90%+ branch coverage gap.
 contract Test9_LoanCalculatorCoverage is TestBase {
 
-    LoanCalculatorTest calc;
-
     // ── Helper: deploy calc mock + oracle env ────────────────────────────────
 
     struct CalcEnv {

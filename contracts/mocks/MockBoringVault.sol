@@ -3,6 +3,7 @@ pragma solidity ^0.8.28;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import "../adapters/interfaces/IBoringVault.sol";
 
 /// @notice Mock Boring Vault Teller for testing ParthenonVaultAdapter.
 ///         Simulates bulkDeposit/bulkWithdraw with 1:1 share ratio and 1% yield on withdraw.
@@ -61,7 +62,7 @@ contract MockTeller {
 }
 
 /// @notice Mock Accountant for testing. Returns a fixed 1:1 exchange rate.
-contract MockAccountant {
+contract MockAccountant is IAccountant {
     /// @notice Returns 1e18 (1:1 rate in 18-decimal fixed point)
     function getRate() external pure returns (uint256) {
         return 1e18;
@@ -124,7 +125,7 @@ contract MockTellerConfigurable {
 }
 
 /// @notice Configurable Mock Accountant for edge-case testing (rate=0, checkpoint failure).
-contract MockAccountantConfigurable {
+contract MockAccountantConfigurable is IAccountant {
     uint256 public rate;
     bool public checkpointShouldRevert;
 

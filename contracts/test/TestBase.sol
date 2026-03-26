@@ -131,13 +131,6 @@ abstract contract TestBase {
         activeLoanId = lendId; // lend offer is now the active s3 loan
     }
 
-    /// @dev Warp time via Hevm/Hardhat cheatcode
-    function _warpDays(uint256 numDays) internal {
-        uint256 target = block.timestamp + numDays * 1 days;
-        address vm = 0x7109709ECfa91a80626fF3989D68f67F5b1DD12D;
-        (bool ok,) = vm.call(abi.encodeWithSelector(bytes4(0xe5d6bf02), target));
-        (ok);
-    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -222,7 +215,7 @@ contract BorrowerAgent {
 
 /// @notice Generic attacker that tries to call restricted LoanFactory functions
 contract Attacker {
-    LoanFactory private factory;
+    LoanFactory private immutable factory;
 
     constructor(address _factory) { factory = LoanFactory(_factory); }
 

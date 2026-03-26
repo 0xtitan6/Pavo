@@ -311,6 +311,7 @@ contract OptimizerAdapter is IYieldAdapter, Ownable2Step, ReentrancyGuard {
         require(loanIds.length <= MAX_BATCH_SIZE, "Batch too large");
 
         address optimizer = optimizers[token];
+        uint256 positionsClosed;
 
         for (uint256 i = 0; i < loanIds.length; i++) {
             uint256 lid = loanIds[i];
@@ -322,7 +323,7 @@ contract OptimizerAdapter is IYieldAdapter, Ownable2Step, ReentrancyGuard {
             depositedAmount[lid][token] = 0;
             totalDepositedAssets[token] -= deposited;
             activePositions[token]--;
-            totalActivePositions--;
+            positionsClosed++;
             totalShares[token] -= shares;
             _positionsByToken[token].remove(lid);
 
@@ -332,6 +333,7 @@ contract OptimizerAdapter is IYieldAdapter, Ownable2Step, ReentrancyGuard {
 
             emit EmergencyWithdrawn(lid, token, assets, shares, to);
         }
+        totalActivePositions -= positionsClosed;
         require(totalAssets_ > 0, "No assets withdrawn");
     }
 

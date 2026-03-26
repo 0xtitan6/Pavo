@@ -8,7 +8,7 @@ import "@chainlink/contracts/src/v0.8/shared/interfaces/AggregatorV3Interface.so
 /// @dev Allows setting price, decimals, and staleness for test scenarios
 contract MockAggregatorV3 is AggregatorV3Interface {
 
-    uint8 private _decimals;
+    uint8 private immutable _decimals;
     int256 private _answer;
     uint256 private _updatedAt;
     uint256 private _startedAt;

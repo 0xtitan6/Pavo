@@ -2,6 +2,7 @@
 pragma solidity ^0.8.28;
 
 import {IPoolOracle} from "../interfaces/IPoolOracle.sol";
+import {IPriceOracle} from "../interfaces/IPriceOracle.sol";
 import {ORACLE_PRICE_SCALE} from "../libraries/ConstantsLib.sol";
 
 import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
@@ -16,13 +17,6 @@ import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 ///
 ///      Formula: price = (rawUsdPrice * 1e36) / (10^feedDecimals)
 ///        scaled to:  10^(36 + loanDecimals - collateralDecimals) precision
-interface IPriceOracle {
-    function getOraclePriceView(
-        uint256 amount,
-        address tokenAddress,
-        uint8 assetDecimals
-    ) external view returns (uint256 assetValue);
-}
 
 contract PoolOracleAdapter is IPoolOracle {
     /// @notice The ParthenonFi PriceOracle contract

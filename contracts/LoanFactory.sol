@@ -97,10 +97,10 @@ contract LoanFactory is ILoanFactory, ReentrancyGuard, Ownable2Step, Pausable {
     event ProtocolFeeUpdated(uint256 oldFeeBps, uint256 newFeeBps);
 
     /// @notice Emitted when the fee recipient is updated
-    event FeeRecipientUpdated(address oldRecipient, address newRecipient);
+    event FeeRecipientUpdated(address indexed oldRecipient, address indexed newRecipient);
 
     /// @notice Emitted when the yield adapter is updated
-    event YieldAdapterUpdated(address oldAdapter, address newAdapter);
+    event YieldAdapterUpdated(address indexed oldAdapter, address indexed newAdapter);
 
     /// @notice Emitted when idle yield surplus is distributed during takeUpLoan
     event YieldSurplus(uint256 indexed loanId, address indexed recipient, address indexed token, uint256 amount);

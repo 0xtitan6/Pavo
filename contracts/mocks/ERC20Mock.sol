@@ -7,7 +7,7 @@ import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 // https://github.com/OpenZeppelin/openzeppelin-contracts/blob/0a25c1940ca220686588c4af3ec526f725fe2582/contracts/mocks/ERC20Mock.sol
 // mock class using ERC20
 contract ERC20Mock is ERC20 {
-    uint8 private _customDecimals;
+    uint8 private immutable _customDecimals;
 
     constructor(
         string memory name,

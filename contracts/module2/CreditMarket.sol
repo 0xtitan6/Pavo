@@ -44,7 +44,6 @@ contract CreditMarket is ICreditMarket, Ownable2Step, ReentrancyGuard {
 
     /// @dev FIFO queue of unpaid batch expiries
     uint32[] internal _unpaidBatches;
-    uint128 internal _unpaidBatchesStart;
 
     /// @dev Batch expiry => batch data
     mapping(uint32 => WithdrawalBatch) internal _batches;

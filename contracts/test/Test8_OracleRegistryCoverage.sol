@@ -276,8 +276,8 @@ contract AcceptOwnerHelper {
 
 /// @notice Mock feed where answeredInRound < roundId (stale round data)
 contract MockAggregatorV3Lagging is AggregatorV3Interface {
-    uint8 private _decimals;
-    int256 private _answer;
+    uint8 private immutable _decimals;
+    int256 private immutable _answer;
 
     constructor(uint8 decimals_, int256 initialAnswer) {
         _decimals = decimals_;
