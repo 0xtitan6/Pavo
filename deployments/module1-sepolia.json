@@ -1,0 +1,36 @@
+{
+  "network": "sepolia",
+  "chainId": 11155111,
+  "deployer": "0x0cd4d01358B71ecc330BC7278e609a4C1665d3C0",
+  "timestamp": "2026-03-27T00:50:20.829Z",
+  "contracts": {
+    "AssetRegistry": "0xEaEfA2a3A43A62d2Ab2886116C8251b0db41948c",
+    "PriceOracle": "0x5BA5F7b81267981a3DfcF99206c7d893680D7b9C",
+    "LoanFactory": "0x133C0681ABFF7632f5d24B6eB78E5da12FA9279E",
+    "MockWBTC": "0x796ff806405ff052f8DE717E0D936D6A25D44416",
+    "MockWETH": "0x79555413169b90Ecd8aCEa5D96aBEFa60Ec4e52C",
+    "MockUSDC": "0xE33E3E3cB84e38E9531387e69bf7352dEcd25e9b",
+    "MockUSDT": "0x895A91D8d79fdb6faCe6d27d3c414EE7A20B3F50"
+  },
+  "config": {
+    "feeRecipient": "0x0cd4d01358B71ecc330BC7278e609a4C1665d3C0",
+    "protocolFeeBps": 500,
+    "assets": {
+      "WBTC": "0x796ff806405ff052f8DE717E0D936D6A25D44416",
+      "WETH": "0x79555413169b90Ecd8aCEa5D96aBEFa60Ec4e52C",
+      "USDC": "0xE33E3E3cB84e38E9531387e69bf7352dEcd25e9b",
+      "USDT": "0x895A91D8d79fdb6faCe6d27d3c414EE7A20B3F50"
+    },
+    "pairs": [
+      "WBTC/USDC",
+      "WETH/USDC",
+      "WBTC/USDT",
+      "WETH/USDT"
+    ],
+    "feeds": {
+      "BTC/USD": "0x1b44F3514812d835EB1BDB0acB33d3fA3351Ee43",
+      "ETH/USD": "0x694AA1769357215DE4FAC081bf1f309aDC325306"
+    },
+    "maxStaleness": 86400
+  }
+}
