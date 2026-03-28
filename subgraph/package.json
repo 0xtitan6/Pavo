@@ -1,0 +1,18 @@
+{
+  "name": "parthenon-module1-subgraph",
+  "version": "0.1.0",
+  "license": "MIT",
+  "scripts": {
+    "codegen": "graph codegen",
+    "build": "graph build",
+    "deploy": "graph deploy parthenon-evm-testnet-module1",
+    "deploy:studio": "graph deploy --studio parthenon-evm-testnet-module1",
+    "create-local": "graph create --node http://localhost:8020/ parthenon-evm-testnet-module1",
+    "remove-local": "graph remove --node http://localhost:8020/ parthenon-evm-testnet-module1",
+    "deploy-local": "graph deploy --node http://localhost:8020/ --ipfs http://localhost:5001 parthenon-evm-testnet-module1"
+  },
+  "dependencies": {
+    "@graphprotocol/graph-cli": "0.93.2",
+    "@graphprotocol/graph-ts": "0.35.1"
+  }
+}

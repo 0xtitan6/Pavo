@@ -1,0 +1,105 @@
+specVersion: 1.0.0
+indexerHints:
+  prune: auto
+schema:
+  file: schema.graphql
+dataSources:
+  - kind: ethereum
+    name: LoanFactory
+    network: sepolia
+    source:
+      address: "0x133C0681ABFF7632f5d24B6eB78E5da12FA9279E"
+      abi: LoanFactory
+      startBlock: 10534353
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.7
+      language: wasm/assemblyscript
+      entities:
+        - Protocol
+        - Loan
+        - LoanEvent
+        - DailyLoanStat
+        - UserStat
+        - ProtocolConfigChange
+      abis:
+        - name: LoanFactory
+          file: LoanFactory/LoanFactory.json
+      eventHandlers:
+        - event: Created(indexed uint256,indexed address,uint256,uint8,uint256,uint256)
+          handler: handleCreated
+        - event: Cancelled(indexed address,uint8)
+          handler: handleCancelled
+        - event: TakeUp(indexed address,indexed address)
+          handler: handleTakeUp
+        - event: Ended(indexed address)
+          handler: handleEnded
+        - event: Liquidated(indexed address)
+          handler: handleLiquidated
+        - event: Interrupted(indexed address)
+          handler: handleInterrupted
+        - event: ToppedUp(indexed address)
+          handler: handleToppedUp
+        - event: FeeCollected(indexed address,indexed address,uint256)
+          handler: handleFeeCollected
+        - event: ProtocolFeeUpdated(uint256,uint256)
+          handler: handleProtocolFeeUpdated
+        - event: FeeRecipientUpdated(indexed address,indexed address)
+          handler: handleFeeRecipientUpdated
+        - event: YieldAdapterUpdated(indexed address,indexed address)
+          handler: handleYieldAdapterUpdated
+        - event: YieldSurplus(indexed uint256,indexed address,indexed address,uint256)
+          handler: handleYieldSurplus
+      file: LoanFactory/LoanFactory.wasm
+  - kind: ethereum
+    name: AssetRegistry
+    network: sepolia
+    source:
+      address: "0xEaEfA2a3A43A62d2Ab2886116C8251b0db41948c"
+      abi: AssetRegistry
+      startBlock: 10534353
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.7
+      language: wasm/assemblyscript
+      entities:
+        - Asset
+        - AssetPair
+      abis:
+        - name: AssetRegistry
+          file: AssetRegistry/AssetRegistry.json
+      eventHandlers:
+        - event: AssetRegistered(indexed address,string,string,uint8)
+          handler: handleAssetRegistered
+        - event: AssetUpdated(indexed address,string,string,uint8)
+          handler: handleAssetUpdated
+        - event: AssetSupportUpdated(indexed address,bool)
+          handler: handleAssetSupportUpdated
+        - event: PairSupportUpdated(indexed address,indexed address,bool)
+          handler: handlePairSupportUpdated
+      file: AssetRegistry/AssetRegistry.wasm
+  - kind: ethereum
+    name: PriceOracle
+    network: sepolia
+    source:
+      address: "0x5BA5F7b81267981a3DfcF99206c7d893680D7b9C"
+      abi: PriceOracle
+      startBlock: 10534353
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.7
+      language: wasm/assemblyscript
+      entities:
+        - PriceFeed
+        - ProtocolConfigChange
+      abis:
+        - name: PriceOracle
+          file: PriceOracle/PriceOracle.json
+      eventHandlers:
+        - event: FeedUpdated(indexed address,indexed address,uint256,uint8)
+          handler: handleFeedUpdated
+        - event: SequencerFeedUpdated(indexed address)
+          handler: handleSequencerFeedUpdated
+        - event: MaxDeviationUpdated(uint256,uint256)
+          handler: handleMaxDeviationUpdated
+      file: PriceOracle/PriceOracle.wasm

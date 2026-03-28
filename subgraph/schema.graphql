@@ -1,0 +1,129 @@
+# ─────────────────────────────────────────────────
+# ParthenonFi Module 1 — Subgraph Schema
+# ─────────────────────────────────────────────────
+
+# ── Protocol singleton ──
+
+type Protocol @entity {
+  id: Bytes! # 0x01
+  loanCount: BigInt!
+  activeLoans: BigInt!
+  protocolFeeBps: BigInt!
+  feeRecipient: Bytes!
+  yieldAdapter: Bytes
+}
+
+# ── Core entities ──
+
+type Loan @entity {
+  id: ID! # loan ID (string of uint256)
+  loanId: BigInt!
+  status: String! # s1 (lend offer), s2 (borrow offer), s3 (active), s4 (terminated)
+  creator: Bytes!
+  lender: Bytes
+  borrower: Bytes
+  assetAmount: BigInt!
+  collateralAmount: BigInt
+  assetAddress: Bytes
+  collateralAddress: Bytes
+  initialCollateralRatio: BigInt
+  liquidationThreshold: BigInt
+  rateBps: BigInt!
+  durationDays: BigInt!
+  rateIndex: Int
+  durationIndex: Int
+  startTime: BigInt
+  createdAt: BigInt!
+  createdAtBlock: BigInt!
+  endedAt: BigInt
+  terminationReason: String # cancelled, ended, liquidated, interrupted
+  txHash: Bytes!
+
+  # Yield tracking
+  yieldSurplusAmount: BigInt
+  yieldSurplusToken: Bytes
+  yieldSurplusRecipient: Bytes
+
+  # Fee tracking
+  feeCollectedAmount: BigInt
+  feeCollectedToken: Bytes
+
+  events: [LoanEvent!]! @derivedFrom(field: "loan")
+}
+
+type LoanEvent @entity(immutable: true) {
+  id: Bytes! # txHash + logIndex
+  loan: Loan!
+  type: String! # Created, Cancelled, TakeUp, Ended, Liquidated, Interrupted, ToppedUp
+  timestamp: BigInt!
+  blockNumber: BigInt!
+  txHash: Bytes!
+  from: Bytes!
+}
+
+# ── Asset Registry ──
+
+type Asset @entity {
+  id: Bytes! # token address
+  symbol: String!
+  feedKey: String!
+  decimals: Int!
+  isSupported: Boolean!
+}
+
+type AssetPair @entity {
+  id: Bytes! # keccak256(collateral, asset)
+  collateral: Bytes!
+  asset: Bytes!
+  isSupported: Boolean!
+}
+
+# ── PriceOracle ──
+
+type PriceFeed @entity {
+  id: Bytes! # token address
+  token: Bytes!
+  feed: Bytes!
+  maxStaleness: BigInt!
+  feedDecimals: Int!
+}
+
+# ── Protocol config events (immutable log) ──
+
+type ProtocolConfigChange @entity(immutable: true) {
+  id: Bytes! # txHash + logIndex
+  type: String! # ProtocolFeeUpdated, FeeRecipientUpdated, YieldAdapterUpdated, etc.
+  timestamp: BigInt!
+  blockNumber: BigInt!
+  txHash: Bytes!
+
+  # Generic old/new for address changes
+  oldAddress: Bytes
+  newAddress: Bytes
+
+  # Generic old/new for uint changes
+  oldValue: BigInt
+  newValue: BigInt
+}
+
+# ── Aggregates ──
+
+type DailyLoanStat @entity {
+  id: ID! # YYYY-MM-DD
+  date: String!
+  loansCreated: BigInt!
+  loansMatched: BigInt!
+  loansCancelled: BigInt!
+  loansLiquidated: BigInt!
+  loansEnded: BigInt!
+  loansInterrupted: BigInt!
+  totalFeesCollected: BigInt!
+}
+
+type UserStat @entity {
+  id: Bytes! # user address
+  totalLoansCreated: BigInt!
+  totalLoansAsLender: BigInt!
+  totalLoansAsBorrower: BigInt!
+  activeLoanCount: BigInt!
+}
