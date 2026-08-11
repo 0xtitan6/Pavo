@@ -1,6 +1,6 @@
 # ParthenonFi Contracts
 
-Smart contracts for ParthenonFi — a peer-to-peer fixed-rate lending protocol where lenders deposit USDC and borrowers post BTC (WBTC) collateral.
+Smart contracts for a peer-to-peer fixed-rate lending protocol where lenders deposit USDC and borrowers post BTC (WBTC) collateral.
 
 ## Overview
 
