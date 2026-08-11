@@ -1,10 +1,10 @@
-# ParthenonFi Contracts
+# Peafowl Contracts
 
 Smart contracts for a peer-to-peer fixed-rate lending protocol where lenders deposit USDC and borrowers post BTC (WBTC) collateral.
 
 ## Overview
 
-ParthenonFi is a peer-to-peer marketplace for fixed-rate, fixed-duration loans. In contrast to pool-based protocols (Aave, Compound) with variable interest rates subject to manipulation, ParthenonFi offers:
+Peafowl is a peer-to-peer marketplace for fixed-rate, fixed-duration loans. In contrast to pool-based protocols (Aave, Compound) with variable interest rates subject to manipulation, ParthenonFi offers:
 
 - **Fixed interest rates** impervious to third-party manipulation
 - **Fixed durations** — from 1 day to 365 days
