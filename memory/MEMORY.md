@@ -1,7 +1,7 @@
-# ParthenonFi Contracts — Project Memory
+# Pavo Contracts — Project Memory
 
 ## Project Overview
-- **Protocol**: ParthenonFi — peer-to-peer fixed-rate lending, USDC lent against WBTC collateral
+- **Protocol**: Pavo — peer-to-peer fixed-rate lending, USDC lent against WBTC collateral
 - **Stack**: Hardhat + Solidity ^0.8.28, pnpm, TypeScript tests
 - **Test runner**: `pnpm test`
 

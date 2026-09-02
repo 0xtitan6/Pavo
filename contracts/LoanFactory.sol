@@ -15,7 +15,7 @@ import "@openzeppelin/contracts/utils/Pausable.sol";
 
 /// @title Loan Factory Contract
 /// @notice Factory for creating and managing peer-to-peer fixed-rate loans
-/// @dev Implements the VeniceFi whitepaper lending protocol with Chainlink oracle integration
+/// @dev Implements the Pavo whitepaper lending protocol with Chainlink oracle integration
 contract LoanFactory is ILoanFactory, ReentrancyGuard, Ownable, Pausable {
     using SafeERC20 for IERC20;
 

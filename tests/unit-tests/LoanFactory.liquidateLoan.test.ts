@@ -3,7 +3,7 @@ import { deployContracts, usdcMock, btcMock, lender, borrower, loanFactory, mock
 import { setupLoanParamsAndLog, transferAndApproveToken, createLoanAndGetId, verifyLoanDetails, verifyTokenBalances, fastForwardTime, verifyLoanDeleted, liquidateLoanAndVerify, verifyLiquidationTokenTransfers, verifyLiquidatedEvent, createLendOfferParams, createBorrowOfferParams } from "../utils/loanHelpers";
 import hre from "hardhat";
 
-describe("LoanFactory liquidateLoan tests for VeniceFi", function () {
+describe("LoanFactory liquidateLoan tests for Pavo", function () {
   beforeEach(async function () {
     await deployContracts();
   });

@@ -3,7 +3,7 @@ import { ethers } from "hardhat";
 import { loanFactory, deployContracts } from "../utils/deployments";
 import hre from "hardhat";
 
-describe("LoanFactory tests for VeniceFi", function () {
+describe("LoanFactory tests for Pavo", function () {
   beforeEach(async function () {
     await deployContracts();
   });

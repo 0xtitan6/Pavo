@@ -4,7 +4,7 @@ import { createLoanAndGetId, endLoanAndVerify, fastForwardTime, prepareBorrowerF
 
 import hre from "hardhat";
 
-describe("LoanFactory endLoan tests for VeniceFi", function () {
+describe("LoanFactory endLoan tests for Pavo", function () {
   beforeEach(async function () {
     await deployContracts();
   });

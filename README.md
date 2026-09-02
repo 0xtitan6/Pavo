@@ -1,10 +1,10 @@
-# Peafowl Contracts
+# Pavo Contracts
 
 Smart contracts for a peer-to-peer fixed-rate lending protocol where lenders deposit USDC and borrowers post BTC (WBTC) collateral.
 
 ## Overview
 
-Peafowl is a peer-to-peer marketplace for fixed-rate, fixed-duration loans. In contrast to pool-based protocols (Aave, Compound) with variable interest rates subject to manipulation, ParthenonFi offers:
+Pavo is a peer-to-peer marketplace for fixed-rate, fixed-duration loans. In contrast to pool-based protocols (Aave, Compound) with variable interest rates subject to manipulation, Pavo offers:
 
 - **Fixed interest rates** impervious to third-party manipulation
 - **Fixed durations** — from 1 day to 365 days
@@ -59,7 +59,7 @@ Manages whitelisted tokens and valid collateral/asset pairs.
 | `isValidPair` | Used by `LoanFactory` on every `createLoan` — blocks unlisted tokens |
 
 ### [contracts/libraries/LoanCalculator.sol](contracts/libraries/LoanCalculator.sol)
-Pure math library implementing formulas from the ParthenonFi whitepaper.
+Pure math library implementing formulas from the Pavo whitepaper.
 
 | Function | Formula | Description |
 |---|---|---|

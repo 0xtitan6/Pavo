@@ -3,7 +3,7 @@ pragma solidity ^0.8.28;
 
 /// @title Loan Factory Interface Contract
 /// @notice This contract serves as a interface for the loan factory for 
-/// creating and managing loans (lend and borrow) within VeniceFi.
+/// creating and managing loans (lend and borrow) within Pavo.
 interface ILoanFactory {
     
     // Status of a loan at the current state

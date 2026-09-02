@@ -5,7 +5,7 @@ import "../PriceOracle.sol";
 
 /// @title Loan Calculator Library
 /// @notice Pure/view functions for calculating loan interest and collateral health score
-/// @dev Implements formulas from VeniceFi whitepaper
+/// @dev Implements formulas from Pavo whitepaper
 ///      Now uses PriceOracle for live Chainlink prices instead of hardcoded values
 library LoanCalculator {
     
