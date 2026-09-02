@@ -305,7 +305,7 @@ export async function verifyEndLoanTokenTransfers(
 ) {
   const oracleAddress = await priceOracle.getAddress();
 
-  const expectedBtcPayout = await loanCalculatorTest.testCalculateBTCPayout.staticCall(
+  const expectedBtcPayout = await loanCalculatorTest.testCalculateCollateralPayout.staticCall(
     loanAssetAmount,
     await loanFactory.RATE_BPS(lendOfferRateIndex),
     await loanFactory.DURATION_DAYS(lendOfferDurationIndex),

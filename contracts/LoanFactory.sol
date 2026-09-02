@@ -123,7 +123,7 @@ contract LoanFactory is ILoanFactory, ReentrancyGuard, Ownable, Pausable {
 
     /// @notice Creates a new loan offer (lend or borrow)
     /// @param _asset The USDC amount of the loan
-    /// @param _collateral The BTC amount of collateral
+    /// @param _collateral The collateral token amount
     /// @param _initialCollateralRatio The initial collateral-to-loan ratio (ρ in bps)
     /// @param _liquidationThreshold The liquidation threshold (c in bps)
     /// @param _assetAddress The token address for USDC
@@ -289,7 +289,7 @@ contract LoanFactory is ILoanFactory, ReentrancyGuard, Ownable, Pausable {
         if (previousStatus == Status.s1) {
             IERC20(assetAddress).safeTransfer(lender_, asset_);
 
-        // eq. 47-48: Cancel borrow offer → return BTC to borrower
+        // eq. 47-48: Cancel borrow offer → return collateral to borrower
         } else {
             IERC20(collateralAddress).safeTransfer(borrower_, collateral_);
         }
@@ -457,7 +457,7 @@ contract LoanFactory is ILoanFactory, ReentrancyGuard, Ownable, Pausable {
         // CEI: delete before external calls
         delete loans[id];
 
-        // eq. 57: w_{t+1}[0] = w_t[0] + z  (lender claims all BTC collateral)
+        // eq. 57: w_{t+1}[0] = w_t[0] + z  (lender claims all collateral)
         IERC20(collateralAddress_).safeTransfer(lender_, collateral_);
 
         emit Liquidated(msg.sender);
@@ -467,7 +467,7 @@ contract LoanFactory is ILoanFactory, ReentrancyGuard, Ownable, Pausable {
     // END LOAN — Whitepaper eq. 53-55 (natural maturity)
     // ========================================================================
 
-    /// @notice End a loan at maturity, split BTC between lender and borrower
+    /// @notice End a loan at maturity, split collateral between lender and borrower
     /// @dev eq. 54: min{ϕ^(-1)((1+r)^d·v), z} to lender
     ///      eq. 55: max{z - ϕ^(-1)((1+r)^d·v), 0} to borrower
     /// @param id The ID of the loan to end
@@ -525,7 +525,7 @@ contract LoanFactory is ILoanFactory, ReentrancyGuard, Ownable, Pausable {
 
     /// @notice Borrower ends loan early, pays full-term interest in USDC
     /// @dev eq. 50-51: borrower pays (1+r)^d * v in USDC
-    ///      eq. 52: borrower gets back full BTC collateral z
+    ///      eq. 52: borrower gets back full collateral z
     /// @param id The ID of the loan to interrupt
     function interruptLoan(uint256 id) external nonReentrant override {
         Loan storage loan = loans[id];
@@ -556,7 +556,7 @@ contract LoanFactory is ILoanFactory, ReentrancyGuard, Ownable, Pausable {
         // eq. 50-51: Borrower pays full repayment directly to lender
         IERC20(assetAddress_).safeTransferFrom(borrower_, lender_, totalRepayment);
 
-        // eq. 52: Return full BTC collateral to borrower
+        // eq. 52: Return full collateral to borrower
         IERC20(collateralAddress_).safeTransfer(borrower_, collateral_);
 
         emit Interrupted(borrower_);
@@ -567,9 +567,9 @@ contract LoanFactory is ILoanFactory, ReentrancyGuard, Ownable, Pausable {
     // ========================================================================
 
     /// @notice Borrower adds collateral to improve loan health
-    /// @dev eq. 59-60: z → z + ε, borrower commits ε BTC
+    /// @dev eq. 59-60: z → z + ε, borrower commits ε collateral
     /// @param id The ID of the loan to top up
-    /// @param additionalCollateral The additional BTC amount ε
+    /// @param additionalCollateral The additional collateral amount ε
     function topUp(uint256 id, uint256 additionalCollateral) external nonReentrant override {
         Loan storage loan = loans[id];
         
@@ -583,7 +583,7 @@ contract LoanFactory is ILoanFactory, ReentrancyGuard, Ownable, Pausable {
         // eq. 59: z → z + ε
         loan.collateral += additionalCollateral;
 
-        // eq. 60: w'_{t+1}[0] = w'_t[0] - ε  (borrower commits BTC)
+        // eq. 60: w'_{t+1}[0] = w'_t[0] - ε  (borrower commits collateral)
         IERC20 collateralToken = IERC20(loan.collateralAddress);
         collateralToken.safeTransferFrom(loan.borrower, address(this), additionalCollateral);
 

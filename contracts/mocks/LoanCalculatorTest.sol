@@ -74,7 +74,7 @@ contract LoanCalculatorTest {
         );
     }
 
-    function testCalculateBTCPayout(
+    function testCalculateCollateralPayout(
         uint256 principal,
         uint256 rateBps,
         uint256 durationDays,
@@ -83,7 +83,7 @@ contract LoanCalculatorTest {
         uint8 assetDecimals,
         PriceOracle oracle
     ) external returns (uint256) {
-        return LoanCalculator.calculateBTCPayout(
+        return LoanCalculator.calculateCollateralPayout(
             principal,
             rateBps,
             durationDays,

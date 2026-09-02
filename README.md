@@ -95,8 +95,8 @@ Pure math library implementing formulas from the Pavo whitepaper.
 |---|---|---|
 | `calculateTotalRepayment` | `(1 + r_daily)^d * v` | Total USDC repayment at maturity |
 | `calculateHealthScore` | `ϕ_t(z) / ((1+r)^t * v)` in bps | Current collateral health (uses hours elapsed, not days) |
-| `calculateBTCPayout` | `min(ϕ⁻¹((1+r)^d * v), z)` | BTC paid to lender at maturity |
-| `calculateBTCPayout` (excess) | `z - btcPayout` | Excess BTC returned to borrower |
+| `calculateCollateralPayout` | `min(ϕ⁻¹((1+r)^d * v), z)` | Collateral paid to lender at maturity |
+| `calculateExcessCollateral` | `z - payout` | Excess collateral returned to borrower |
 
 ### [contracts/interfaces/ILoanFactory.sol](contracts/interfaces/ILoanFactory.sol)
 Defines the `Loan` struct, `Status` enum, events, and function signatures.

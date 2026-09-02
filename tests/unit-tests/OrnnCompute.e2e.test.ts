@@ -144,7 +144,7 @@ describe("Ornn compute collateral end-to-end", function () {
     expect(loan.id).to.equal(0);
 
     // Lender's yield is paid in B200H at the adapter's latest posted price
-    const expectedPayout = await calculator.testCalculateBTCPayout.staticCall(
+    const expectedPayout = await calculator.testCalculateCollateralPayout.staticCall(
       LOAN_AMOUNT,
       await factory.RATE_BPS(rateIndex),
       await factory.DURATION_DAYS(durationIndex),

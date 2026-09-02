@@ -200,7 +200,7 @@ library LoanCalculator {
     }
 
     // ========================================================================
-    // LOAN SETTLEMENT — min/max BTC payouts
+    // LOAN SETTLEMENT — min/max collateral payouts
     // ========================================================================
 
     /// @notice Calculate collateral payout to lender at loan maturity
@@ -214,7 +214,7 @@ library LoanCalculator {
     /// @param assetDecimals Decimals of the asset (lent) token
     /// @param oracle The PriceOracle contract instance
     /// @return collateralPayout Collateral token amount paid to lender
-    function calculateBTCPayout(
+    function calculateCollateralPayout(
         uint256 principal,
         uint256 rateBps,
         uint256 durationDays,
@@ -253,7 +253,7 @@ library LoanCalculator {
         uint8 assetDecimals,
         PriceOracle oracle
     ) internal returns (uint256 excessCollateral) {
-        uint256 collateralPayout = calculateBTCPayout(
+        uint256 collateralPayout = calculateCollateralPayout(
             principal, rateBps, durationDays,
             collateralAmount, collateralAddress, assetDecimals, oracle
         );
