@@ -188,6 +188,135 @@ describe("Ornn compute collateral end-to-end", function () {
     expect(await usdc.balanceOf(factoryAddr)).to.equal(0n);
   });
 
+  it("Should serve WBTC (Chainlink-style) and compute collateral loans concurrently in one factory", async function () {
+    const factoryAddr = await factory.getAddress();
+
+    // Onboard WBTC alongside B200H: same registry/oracle, its own feed
+    const btc = await hre.ethers.deployContract("ERC20Mock", [
+      "Wrapped Bitcoin", "WBTC", owner.address, hre.ethers.parseUnits("100", 8), 8
+    ]);
+    await btc.waitForDeployment();
+    const btcFeed = await hre.ethers.deployContract("MockAggregatorV3", [
+      8, 50_000n * 10n ** 8n // $50,000
+    ]);
+    await btcFeed.waitForDeployment();
+    await registry.registerAsset(await btc.getAddress(), "WBTC", "BTC/USD", 8);
+    await registry.setAssetSupported(await btc.getAddress(), true);
+    await registry.setPairSupported(await btc.getAddress(), await usdc.getAddress(), true);
+    await oracle.setFeed(await btc.getAddress(), await btcFeed.getAddress(), 400 * 24 * 3600);
+
+    // Loan 1: 0.5 WBTC ($25,000) collateralizing 10,000 USDC
+    const btcCollateral = hre.ethers.parseUnits("0.5", 8);
+    await btc.transfer(borrower.address, btcCollateral);
+    await btc.connect(borrower).approve(factoryAddr, btcCollateral);
+    await factory.connect(borrower).createLoan(
+      0, btcCollateral, INITIAL_COLLATERAL_RATIO, LIQUIDATION_THRESHOLD,
+      await usdc.getAddress(), await btc.getAddress(), 1, 2
+    ); // id 1
+    await usdc.transfer(lender.address, LOAN_AMOUNT);
+    await usdc.connect(lender).approve(factoryAddr, LOAN_AMOUNT);
+    await factory.connect(lender).createLoan(
+      LOAN_AMOUNT, 0, INITIAL_COLLATERAL_RATIO, LIQUIDATION_THRESHOLD,
+      await usdc.getAddress(), await btc.getAddress(), 1, 2
+    ); // id 2
+    await factory.connect(borrower).takeUpLoan(1, 2);
+
+    // Loan 2: 2,000 B200H ($13,020 via PostedPriceFeed) collateralizing 10,000 USDC
+    await b200h.transfer(borrower.address, COLLATERAL);
+    await b200h.connect(borrower).approve(factoryAddr, COLLATERAL);
+    await factory.connect(borrower).createLoan(
+      0, COLLATERAL, INITIAL_COLLATERAL_RATIO, LIQUIDATION_THRESHOLD,
+      await usdc.getAddress(), await b200h.getAddress(), 1, 2
+    ); // id 3
+    await usdc.transfer(lender.address, LOAN_AMOUNT);
+    await usdc.connect(lender).approve(factoryAddr, LOAN_AMOUNT);
+    await factory.connect(lender).createLoan(
+      LOAN_AMOUNT, 0, INITIAL_COLLATERAL_RATIO, LIQUIDATION_THRESHOLD,
+      await usdc.getAddress(), await b200h.getAddress(), 1, 2
+    ); // id 4
+    await factory.connect(borrower).takeUpLoan(3, 4);
+
+    // Both loans active in the same factory, each priced by its own feed
+    const btcLoan = await factory.loans(2);
+    const computeLoan = await factory.loans(4);
+    expect(btcLoan.s).to.equal(2);
+    expect(btcLoan.collateralAddress).to.equal(await btc.getAddress());
+    expect(computeLoan.s).to.equal(2);
+    expect(computeLoan.collateralAddress).to.equal(await b200h.getAddress());
+
+    // Borrower received both loan payouts
+    expect(await usdc.balanceOf(borrower.address)).to.equal(LOAN_AMOUNT * 2n);
+  });
+
+  it("Should let the borrower top up compute collateral to escape liquidation", async function () {
+    const loanId = await createMatchedLoan(7, 5); // 11% / 365 days
+    const factoryAddr = await factory.getAddress();
+
+    // Crash: $6.51 → $3.906. Collateral value $7,812 < 110% × $10,000 → liquidatable
+    await adapter.postAnswer((OCPI_B200_PRICE * 60n) / 100n);
+
+    // Borrower tops up 1,000 more hours: 3,000 × $3.906 = $11,718 > $11,000
+    const topUpAmount = hre.ethers.parseUnits("1000", 18);
+    await b200h.transfer(borrower.address, topUpAmount);
+    await b200h.connect(borrower).approve(factoryAddr, topUpAmount);
+    await expect(factory.connect(borrower).topUp(loanId, topUpAmount))
+      .to.emit(factory, "ToppedUp");
+
+    // Loan is healthy again — liquidation reverts
+    await expect(factory.connect(lender).liquidateLoan(loanId)).to.be.reverted;
+
+    const loan = await factory.loans(loanId);
+    expect(loan.collateral).to.equal(COLLATERAL + topUpAmount);
+  });
+
+  it("Should reject takeUp when a price drop leaves the offer undercollateralized", async function () {
+    const factoryAddr = await factory.getAddress();
+
+    // Offers created at $6.51: 2,000 B200H = $13,020 > 120% × $10,000 = $12,000
+    await b200h.transfer(borrower.address, COLLATERAL);
+    await b200h.connect(borrower).approve(factoryAddr, COLLATERAL);
+    await factory.connect(borrower).createLoan(
+      0, COLLATERAL, INITIAL_COLLATERAL_RATIO, LIQUIDATION_THRESHOLD,
+      await usdc.getAddress(), await b200h.getAddress(), 1, 2
+    );
+    await usdc.transfer(lender.address, LOAN_AMOUNT);
+    await usdc.connect(lender).approve(factoryAddr, LOAN_AMOUNT);
+    await factory.connect(lender).createLoan(
+      LOAN_AMOUNT, 0, INITIAL_COLLATERAL_RATIO, LIQUIDATION_THRESHOLD,
+      await usdc.getAddress(), await b200h.getAddress(), 1, 2
+    );
+
+    // Next settle drops 20%: 2,000 × $5.208 = $10,416 < $12,000 required
+    await adapter.postAnswer((OCPI_B200_PRICE * 80n) / 100n);
+
+    await expect(
+      factory.connect(borrower).takeUpLoan(1, 2)
+    ).to.be.revertedWith("Collateral insufficient: phi(z) must be > max(rho*v, c*v)");
+  });
+
+  it("Should block new borrow offers when a posted price trips the deviation circuit breaker", async function () {
+    const factoryAddr = await factory.getAddress();
+
+    // First borrow offer seeds the oracle's lastGoodPrice at $6.51
+    await b200h.transfer(borrower.address, COLLATERAL * 2n);
+    await b200h.connect(borrower).approve(factoryAddr, COLLATERAL * 2n);
+    await factory.connect(borrower).createLoan(
+      0, COLLATERAL, INITIAL_COLLATERAL_RATIO, LIQUIDATION_THRESHOLD,
+      await usdc.getAddress(), await b200h.getAddress(), 1, 2
+    );
+
+    // A +60% posted price exceeds PriceOracle's 50% deviation limit —
+    // createLoan's checked oracle read refuses to value collateral with it
+    await adapter.postAnswer((OCPI_B200_PRICE * 160n) / 100n);
+
+    await expect(
+      factory.connect(borrower).createLoan(
+        0, COLLATERAL, INITIAL_COLLATERAL_RATIO, LIQUIDATION_THRESHOLD,
+        await usdc.getAddress(), await b200h.getAddress(), 1, 2
+      )
+    ).to.be.revertedWithCustomError(oracle, "PriceDeviationTooLarge");
+  });
+
   it("Should block matching when the OCPI feed has gone stale", async function () {
     const factoryAddr = await factory.getAddress();
 
