@@ -2,7 +2,7 @@
 pragma solidity ^0.8.28;
 
 /// @title IAssetRegistry
-/// @notice Interface for the VeniceFi Asset Registry
+/// @notice Interface for the Pavo Asset Registry
 /// @dev Manages supported tokens, their metadata, Chainlink feed keys, and valid trading pairs
 interface IAssetRegistry {
 

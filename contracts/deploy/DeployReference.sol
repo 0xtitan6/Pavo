@@ -5,7 +5,7 @@ import "../PriceOracle.sol";
 import "../AssetRegistry.sol";
 import "../LoanFactory.sol";
 
-/// @title Deployment Script Reference for VeniceFi
+/// @title Deployment Script Reference for Pavo
 /// @notice Shows how to deploy and configure the full protocol stack
 /// @dev This is a reference — adapt to your deployment framework (Foundry, Hardhat, etc.)
 
@@ -62,7 +62,7 @@ import "../LoanFactory.sol";
  * import "../src/PriceOracle.sol";
  * import "../src/LoanFactory.sol";
  *
- * contract DeployVeniceFi is Script {
+ * contract DeployPavo is Script {
  *     // Ethereum mainnet addresses
  *     address constant WBTC = 0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599;
  *     address constant USDC = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;

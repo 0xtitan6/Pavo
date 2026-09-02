@@ -4,7 +4,7 @@ import { setupLoanParamsAndLog, transferAndApproveToken, createLoanAndGetId, ver
 
 import hre from "hardhat";
 
-describe("LoanFactory topUp tests for VeniceFi", function () {
+describe("LoanFactory topUp tests for Pavo", function () {
   beforeEach(async function () {
     await deployContracts();
   });
