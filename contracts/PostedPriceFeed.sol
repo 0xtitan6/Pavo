@@ -3,12 +3,16 @@ pragma solidity ^0.8.28;
 
 import "@chainlink/contracts/src/v0.8/shared/interfaces/AggregatorV3Interface.sol";
 
-/// @title Ornn Feed Adapter
-/// @notice AggregatorV3Interface-compatible feed for Ornn Compute Price Index (OCPI) values.
-///         An authorized poster pushes the daily settle (fetched off-chain from api.ornnai.com);
-///         PriceOracle consumes it like any Chainlink feed via setFeed().
-/// @dev OCPI settles daily by 20:00 UTC — pair with maxStaleness ≈ 26h in PriceOracle.
-contract OrnnFeedAdapter is AggregatorV3Interface {
+/// @title Posted Price Feed
+/// @notice AggregatorV3Interface-compatible feed for assets without a Chainlink feed.
+///         An authorized poster pushes values sourced off-chain (e.g. Ornn's Compute
+///         Price Index from api.ornnai.com); PriceOracle consumes it like any
+///         Chainlink feed via setFeed().
+/// @dev Trust model: whoever holds a poster key sets the price — mitigated by the
+///      sanity bounds here and PriceOracle's deviation circuit breaker. Pair
+///      PriceOracle's maxStaleness with the source's cadence (e.g. ≈26h for
+///      OCPI's daily 20:00 UTC settle).
+contract PostedPriceFeed is AggregatorV3Interface {
 
     // ========================================================================
     // ERRORS
@@ -50,7 +54,7 @@ contract OrnnFeedAdapter is AggregatorV3Interface {
     /// @notice Pending owner for two-step ownership transfer
     address public pendingOwner;
 
-    /// @notice Addresses authorized to post index values
+    /// @notice Addresses authorized to post prices
     mapping(address => bool) public posters;
 
     /// @notice Sanity bounds on posted answers (0 maxAnswer = unbounded above)
@@ -101,7 +105,7 @@ contract OrnnFeedAdapter is AggregatorV3Interface {
     // POSTING
     // ========================================================================
 
-    /// @notice Post a new index value (the daily OCPI settle)
+    /// @notice Post a new price (e.g. an index's daily settle)
     /// @param answer Index value scaled to feed decimals (e.g. $2.65 with 8 decimals = 265000000)
     function postAnswer(int256 answer) external onlyPoster {
         if (answer <= 0) revert InvalidAnswer(answer);

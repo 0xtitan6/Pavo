@@ -5,7 +5,7 @@ import hre from "hardhat";
 
 /**
  * End-to-end: full loan lifecycle with GPU compute-hour collateral priced by
- * OrnnFeedAdapter (OCPI B200 index) instead of a Chainlink feed.
+ * PostedPriceFeed (OCPI B200 index) instead of a Chainlink feed.
  *
  * Deploys its own stack (B200H token + adapter + registry + oracle + factory)
  * rather than the shared BTC-based fixture in tests/utils/deployments.ts.
@@ -48,7 +48,7 @@ describe("Ornn compute collateral end-to-end", function () {
     await usdc.waitForDeployment();
     await b200h.waitForDeployment();
 
-    adapter = await hre.ethers.deployContract("OrnnFeedAdapter", [
+    adapter = await hre.ethers.deployContract("PostedPriceFeed", [
       owner.address, FEED_DECIMALS, "OCPI B200 / USD"
     ]);
     await adapter.waitForDeployment();
@@ -101,7 +101,7 @@ describe("Ornn compute collateral end-to-end", function () {
     await lendTx.wait();
     const lendOfferId = 2n;
 
-    // Borrower matches: collateral valued through OrnnFeedAdapter at takeUp
+    // Borrower matches: collateral valued through PostedPriceFeed at takeUp
     await expect(factory.connect(borrower).takeUpLoan(borrowOfferId, lendOfferId))
       .to.emit(factory, "TakeUp")
       .withArgs(borrower.address, lender.address);

@@ -1,7 +1,7 @@
 import hre from "hardhat";
 
 /**
- * Poster: fetch the latest OCPI values from Ornn and post them to OrnnFeedAdapters.
+ * Poster: fetch the latest OCPI values from Ornn and post them to PostedPriceFeeds.
  *
  * OCPI settles daily by 20:00 UTC — run this on a cron shortly after, e.g.:
  *   5 20 * * *  cd /path/to/repo && ORNN_FEEDS="B200=0xabc...,H100 SXM=0xdef..." \
@@ -48,7 +48,7 @@ async function main() {
   for (const { gpu, address } of feeds) {
     try {
       const { price, updated } = await fetchOcpiPrice(gpu);
-      const adapter = await ethers.getContractAt("OrnnFeedAdapter", address);
+      const adapter = await ethers.getContractAt("PostedPriceFeed", address);
       const answer = ethers.parseUnits(price.toFixed(FEED_DECIMALS), FEED_DECIMALS);
 
       const tx = await adapter.connect(poster).postAnswer(answer);

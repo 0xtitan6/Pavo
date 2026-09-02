@@ -6,7 +6,7 @@ const OCPI_PRICE = hre.ethers.parseUnits("6.51", 8);
 const FEED_DECIMALS = 8;
 const USDC_DECIMALS = 6;
 
-describe("OrnnFeedAdapter tests", function () {
+describe("PostedPriceFeed tests", function () {
   let adapter: any;
   let owner: any;
   let poster: any;
@@ -14,7 +14,7 @@ describe("OrnnFeedAdapter tests", function () {
 
   beforeEach(async function () {
     [owner, poster, stranger] = await hre.ethers.getSigners();
-    adapter = await hre.ethers.deployContract("OrnnFeedAdapter", [
+    adapter = await hre.ethers.deployContract("PostedPriceFeed", [
       owner.address, FEED_DECIMALS, "OCPI B200 / USD"
     ]);
     await adapter.waitForDeployment();

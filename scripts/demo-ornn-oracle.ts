@@ -4,7 +4,7 @@ import hre from "hardhat";
  * Demo: pricing GPU compute collateral with Ornn's Compute Price Index (OCPI).
  *
  * Fetches live index values for all five OCPI GPUs from Ornn's public API,
- * posts each into its own OrnnFeedAdapter, and runs the full onboarding +
+ * posts each into its own PostedPriceFeed, and runs the full onboarding +
  * valuation flow through AssetRegistry/PriceOracle.
  *
  * Run: npx hardhat run scripts/demo-ornn-oracle.ts
@@ -59,7 +59,7 @@ async function main() {
   const oracle = await ethers.deployContract("PriceOracle", [owner.address]);
   await oracle.waitForDeployment();
 
-  // ── 3. Per GPU: compute-hour token + OrnnFeedAdapter, registered and fed ──
+  // ── 3. Per GPU: compute-hour token + PostedPriceFeed, registered and fed ──
   const tokens: any[] = [];
   for (const [i, gpu] of GPUS.entries()) {
     const token = await ethers.deployContract("ERC20Mock", [
@@ -67,7 +67,7 @@ async function main() {
     ]);
     await token.waitForDeployment();
 
-    const feed = await ethers.deployContract("OrnnFeedAdapter", [
+    const feed = await ethers.deployContract("PostedPriceFeed", [
       owner.address, FEED_DECIMALS, `OCPI ${gpu.name} / USD`,
     ]);
     await feed.waitForDeployment();
