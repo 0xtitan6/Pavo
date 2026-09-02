@@ -15,7 +15,7 @@ import {
 } from "../utils/loanHelpers";
 import hre from "hardhat";
 
-describe("LoanFactory interruptLoan tests for VeniceFi", function () {
+describe("LoanFactory interruptLoan tests for Pavo", function () {
   beforeEach(async function () {
     await deployContracts();
   });

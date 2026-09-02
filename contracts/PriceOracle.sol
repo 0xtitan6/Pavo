@@ -4,7 +4,7 @@ pragma solidity ^0.8.28;
 import "@chainlink/contracts/src/v0.8/shared/interfaces/AggregatorV3Interface.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 
-/// @title Price Oracle for VeniceFi
+/// @title Price Oracle for Pavo
 /// @notice Wraps Chainlink price feeds with safety checks (staleness, zero-price, sequencer)
 /// @dev Implements ϕ_t(H_t, v) valuation process from whitepaper equation 23
 contract PriceOracle {

@@ -6,7 +6,7 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 
 /// @title AssetRegistry
-/// @notice Manages whitelisted tokens and valid collateral/asset pairs for VeniceFi
+/// @notice Manages whitelisted tokens and valid collateral/asset pairs for Pavo
 /// @dev Prevents fake-token attacks (H-4) by requiring all tokens used in LoanFactory
 ///      to be registered, supported, and paired by the protocol owner.
 ///
