@@ -192,7 +192,7 @@ describe("Ornn compute collateral end-to-end", function () {
     const factoryAddr = await factory.getAddress();
 
     // Onboard WBTC alongside B200H: same registry/oracle, its own feed
-    const btc = await hre.ethers.deployContract("ERC20Mock", [
+    const btc: any = await hre.ethers.deployContract("ERC20Mock", [
       "Wrapped Bitcoin", "WBTC", owner.address, hre.ethers.parseUnits("100", 8), 8
     ]);
     await btc.waitForDeployment();

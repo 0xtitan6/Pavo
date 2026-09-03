@@ -78,8 +78,8 @@ async function main() {
     await registry.setAssetSupported(await token.getAddress(), true);
     await registry.setPairSupported(await token.getAddress(), await usdc.getAddress(), true);
 
-    // maxStaleness 26h fits OCPI's daily 20:00 UTC settle
-    await oracle.setFeed(await token.getAddress(), await feed.getAddress(), 26 * 3600);
+    // maxStaleness 2h fits the hourly OCPI current-price cadence
+    await oracle.setFeed(await token.getAddress(), await feed.getAddress(), 2 * 3600);
 
     tokens.push({ ...gpu, token, feed });
   }

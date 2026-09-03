@@ -30,15 +30,26 @@ Every collateral token needs three things: an ERC20 representation, an `AssetReg
 |---|---|---|
 | Majors | WBTC, WETH | Chainlink aggregator proxy, as-is |
 | Alt coins | Any ERC20 with a Chainlink feed | Chainlink aggregator proxy, as-is |
-| Compute | Tokenized GPU compute-hours (H100, H200, A100, RTX 5090, B200) | [`PostedPriceFeed`](contracts/PostedPriceFeed.sol) fed daily from [Ornn's Compute Price Index](https://data.ornn.com) (OCPI) by [scripts/post-ornn-price.ts](scripts/post-ornn-price.ts) |
+| Compute | Tokenized GPU compute-hours (H100, H200, A100, RTX 5090, B200) | [`PostedPriceFeed`](contracts/PostedPriceFeed.sol) fed hourly from [Ornn's Compute Price Index](https://data.ornn.com) (OCPI) by [scripts/post-ornn-price.ts](scripts/post-ornn-price.ts) |
 | Real-world assets | Tokenized T-bills, commodities, invoices | `PostedPriceFeed` fed from the relevant index/NAV source, or any `AggregatorV3`-compatible RWA feed |
 
-`PostedPriceFeed` is a generic poster-driven feed: an authorized poster pushes values sourced off-chain, guarded by sanity bounds on the feed and the oracle's deviation circuit breaker. Match `maxStaleness` to the source's cadence (e.g. ~26h for OCPI's daily 20:00 UTC settle vs. ~1h for Chainlink's BTC/USD heartbeat). Different collateral classes coexist in one deployment — a WBTC loan and a compute-hour loan can run concurrently in the same `LoanFactory` (see [tests/unit-tests/OrnnCompute.e2e.test.ts](tests/unit-tests/OrnnCompute.e2e.test.ts)).
+`PostedPriceFeed` is a generic poster-driven feed: an authorized poster pushes values sourced off-chain, guarded by sanity bounds on the feed and the oracle's deviation circuit breaker. Match `maxStaleness` to the source's cadence — use 2h for Ornn's hourly OCPI current-price endpoint, which is posted by [scripts/post-ornn-price.ts](scripts/post-ornn-price.ts). The poster also rejects an Ornn response whose own timestamp is older than 90 minutes, preventing stale off-chain data from being republished as fresh. Different collateral classes coexist in one deployment — a WBTC loan and a compute-hour loan can run concurrently in the same `LoanFactory` (see [tests/unit-tests/OrnnCompute.e2e.test.ts](tests/unit-tests/OrnnCompute.e2e.test.ts)).
 
 Try the live demo (fetches real OCPI prices and runs the full onboarding + valuation flow):
 ```shell
 npx hardhat run scripts/demo-ornn-oracle.ts
 ```
+
+For live hourly pricing, point one `PostedPriceFeed` at each of Ornn's covered GPU types (H100 SXM, H200, B200, A100 SXM4, and RTX 5090), configure `ORNN_FEEDS` as documented in [.env.example](.env.example), and run the poster shortly after every hour:
+
+```shell
+set -a && source .env && set +a
+npx hardhat run scripts/post-ornn-price.ts --network sepolia
+```
+
+The contract price is USD per GPU-hour: for example, an OCPI value of `$2.74` means 100 H100-hour tokens have a collateral value of `$274`. The current-price endpoint is an hourly OCPI value; the separate daily-index endpoint is only the settled daily close and is deliberately not used by the poster.
+
+> **Data licence required for public deployment.** Publishing OCPI values through an on-chain feed is external redistribution and settlement use. Ornn's standard terms require a separate written agreement for that use; obtain it before using the poster outside a private test environment. The source base URL is configurable through `ORNN_API_BASE_URL` for the licensed API endpoint Ornn provides.
 
 ## Contracts
 
@@ -157,7 +168,7 @@ Onboarding additional collateral (compute, alt coins, RWAs) needs no redeploy �
 2. setPairSupported(token, USDC, true)
 3. oracle.setFeed(token, feed, maxStaleness)
    — feed = Chainlink proxy for crypto, or a PostedPriceFeed you deploy and post to
-     (for compute: run scripts/post-ornn-price.ts on a daily cron after 20:00 UTC)
+     (for compute: use a 2h `maxStaleness` + `scripts/post-ornn-price.ts` on an hourly cron)
 ```
 
 See [contracts/deploy/DeployReference.sol](contracts/deploy/DeployReference.sol) for chain-specific Chainlink addresses and a full Foundry deploy script example.
